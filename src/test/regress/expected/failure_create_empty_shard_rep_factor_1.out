@@ -1,0 +1,85 @@
+SET citus.next_shard_id TO 100100;
+ALTER SEQUENCE pg_catalog.pg_dist_placement_placementid_seq RESTART 20;
+CREATE TABLE append_tt1(id int);
+SELECT create_distributed_table('append_tt1', 'id', 'append');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+SELECT * FROM pg_dist_shard;
+ logicalrelid | shardid | shardstorage | shardminvalue | shardmaxvalue 
+--------------+---------+--------------+---------------+---------------
+(0 rows)
+
+SELECT * FROM pg_dist_shard_placement;
+ shardid | shardstate | shardlength | nodename | nodeport | placementid 
+---------+------------+-------------+----------+----------+-------------
+(0 rows)
+
+SET citus.shard_replication_factor TO 1;
+-- reject all connections immediately
+SELECT citus.mitmproxy('flow.kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+-- the first one goes to the other worker, so this succeeds
+SELECT master_create_empty_shard('append_tt1');
+ master_create_empty_shard 
+---------------------------
+                    100100
+(1 row)
+
+-- create a shard, try with our worker first
+SELECT master_create_empty_shard('append_tt1');
+WARNING:  could not connect to node "localhost:57640"
+ master_create_empty_shard 
+---------------------------
+                    100101
+(1 row)
+
+-- this one goes to the other worker
+SELECT master_create_empty_shard('append_tt1');
+ master_create_empty_shard 
+---------------------------
+                    100102
+(1 row)
+
+-- if we fail the connection after it's been established Citus doesn't recover
+-- kill the connection when we send master_apply_shard_ddl_command
+SELECT citus.mitmproxy('flow.contains(b"CREATE TABLE").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SELECT master_create_empty_shard('append_tt1');
+ERROR:  server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+CONTEXT:  while executing command on localhost:57640
+SELECT * FROM pg_dist_shard;
+ logicalrelid | shardid | shardstorage | shardminvalue | shardmaxvalue 
+--------------+---------+--------------+---------------+---------------
+ append_tt1   |  100100 | t            |               | 
+ append_tt1   |  100101 | t            |               | 
+ append_tt1   |  100102 | t            |               | 
+(3 rows)
+
+SELECT * FROM pg_dist_shard_placement;
+ shardid | shardstate | shardlength | nodename  | nodeport | placementid 
+---------+------------+-------------+-----------+----------+-------------
+  100100 |          1 |           0 | localhost |    57637 |          20
+  100101 |          1 |           0 | localhost |    57637 |          21
+  100102 |          1 |           0 | localhost |    57637 |          22
+(3 rows)
+
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+DROP TABLE append_tt1;

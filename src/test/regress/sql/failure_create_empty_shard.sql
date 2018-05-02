@@ -13,13 +13,17 @@ SELECT * FROM pg_dist_shard_placement;
 
 -- kill the connection when we send master_apply_shard_ddl_command
 SELECT citus.mitmproxy('flow.contains(b"CREATE TABLE").kill()');
-
 SELECT master_create_empty_shard('append_tt1');
+  -- again, nothing was added to the metadata, this create failed!
+SELECT * FROM pg_dist_shard_placement;
 
---  again, nothing was added to the metadata, this create failed!
+-- kill the connection when we try to close it:
+SELECT citus.mitmproxy('flow.matches(b"^X").kill()');
+SELECT master_create_empty_shard('append_tt1');
 SELECT * FROM pg_dist_shard_placement;
 
 -- this time it should work, the other worker gets the shard
+SELECT citus.mitmproxy('flow.contains(b"CREATE TABLE").kill()');
 SET citus.shard_replication_factor TO 1;
 SELECT master_create_empty_shard('append_tt1');
 
