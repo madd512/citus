@@ -1,0 +1,29 @@
+-- disable the maintenance daemon, prevent it from making any connections
+ALTER SYSTEM SET citus.distributed_deadlock_detection_factor TO -1;
+ALTER SYSTEM SET citus.recover_2pc_interval TO -1;
+ALTER SYSTEM set citus.enable_statistics_collection TO false;
+SELECT pg_reload_conf();
+ pg_reload_conf 
+----------------
+ t
+(1 row)
+
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+-- add the workers
+SELECT master_add_node('localhost', :worker_1_port);  -- the second worker
+                  master_add_node                  
+---------------------------------------------------
+ (1,1,localhost,57637,default,f,t,primary,default)
+(1 row)
+
+SELECT master_add_node('localhost', :worker_2_port + 2);  -- the first worker, behind a mitmproxy
+                  master_add_node                  
+---------------------------------------------------
+ (2,2,localhost,57640,default,f,t,primary,default)
+(1 row)
+

@@ -1,0 +1,68 @@
+CREATE TABLE append_tt1(id int);
+SELECT create_distributed_table('append_tt1', 'id', 'append');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+-- prove that master_create_empty_shard is non-transactional, BEGIN is never sent
+SELECT citus.mitmproxy('flow.contains(b"BEGIN").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+BEGIN;
+SELECT master_create_empty_shard('append_tt1');
+ master_create_empty_shard 
+---------------------------
+                    102012
+(1 row)
+
+ROLLBACK;
+--   even though the shard was actually created the ROLLBACK drops it from our metadata
+SELECT * FROM pg_dist_shard_placement;
+ shardid | shardstate | shardlength | nodename | nodeport | placementid 
+---------+------------+-------------+----------+----------+-------------
+(0 rows)
+
+-- kill the connection when we send master_apply_shard_ddl_command
+SELECT citus.mitmproxy('flow.contains(b"CREATE TABLE").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SELECT master_create_empty_shard('append_tt1');
+ERROR:  server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+CONTEXT:  while executing command on localhost:57640
+--  again, nothing was added to the metadata, this create failed!
+SELECT * FROM pg_dist_shard_placement;
+ shardid | shardstate | shardlength | nodename | nodeport | placementid 
+---------+------------+-------------+----------+----------+-------------
+(0 rows)
+
+-- this time it should work, the other worker gets the shard
+SET citus.shard_replication_factor TO 1;
+SELECT master_create_empty_shard('append_tt1');
+ master_create_empty_shard 
+---------------------------
+                    102014
+(1 row)
+
+--  finally we have a shard to add
+SELECT * FROM pg_dist_shard_placement;
+ shardid | shardstate | shardlength | nodename  | nodeport | placementid 
+---------+------------+-------------+-----------+----------+-------------
+  102014 |          1 |           0 | localhost |    57637 |          11
+(1 row)
+
+DROP TABLE append_tt1;
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
