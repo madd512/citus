@@ -1,5 +1,6 @@
 import re
 import threading
+import queue
 
 from mitmproxy import ctx
 from mitmproxy.utils import strutils
@@ -178,7 +179,8 @@ def print_message(tcp_msg):
 
 handler = None
 command_thread = None
-master = None
+command_queue = queue.Queue()
+response_queue = queue.Queue()
 
 def listen_for_commands(fifoname):
     while True:
@@ -187,11 +189,14 @@ def listen_for_commands(fifoname):
 
         try:
             build_handler(slug)
-            master.options.update(slug=slug)
         except Exception as e:
             result = str(e)
         else:
-            result = ''
+            result = None
+
+        if not result:
+            command_queue.put(slug)
+            result = response_queue.get()
 
         with open(fifoname, mode='w') as fifo:
             fifo.write('{}\n'.format(result))
@@ -215,11 +220,25 @@ def replace_thread(fifoname):
 
 
 def load(loader):
-    global master
-
-    master = loader.master
     loader.add_option('slug', str, 'flow.allow()', "A script to run")
     loader.add_option('fifo', str, '', "Which fifo to listen on for commands")
+
+
+def tick():
+    # we do this dance because ctx isn't threadsafe, it is only set while a handler is
+    # being called.
+    try:
+        slug = command_queue.get_nowait()
+        build_handler(slug)
+    except queue.Empty:
+        return
+
+    try:
+        ctx.options.update(slug=slug)
+    except Exception as e:
+        response_queue.put(str(e))
+    else:
+        response_queue.put('')
 
 
 def configure(updated):
