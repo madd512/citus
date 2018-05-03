@@ -1,0 +1,147 @@
+SET citus.next_shard_id TO 100300;
+ALTER SEQUENCE pg_catalog.pg_dist_placement_placementid_seq RESTART 40;
+SELECT citus.mitmproxy('flow.kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+-- none of these commands generate network traffic
+SET citus.shard_replication_factor TO 2;
+CREATE TABLE append (id int);
+SELECT create_distributed_table('append', 'id', 'append');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+DROP TABLE append;
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+CREATE TABLE append (id int);
+SELECT create_distributed_table('append', 'id', 'append');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+SELECT master_create_empty_shard('append');
+ master_create_empty_shard 
+---------------------------
+                    100300
+(1 row)
+
+SELECT * FROM pg_dist_shard;
+ logicalrelid | shardid | shardstorage | shardminvalue | shardmaxvalue 
+--------------+---------+--------------+---------------+---------------
+ append       |  100300 | t            |               | 
+(1 row)
+
+SELECT * FROM pg_dist_shard_placement;
+ shardid | shardstate | shardlength | nodename  | nodeport | placementid 
+---------+------------+-------------+-----------+----------+-------------
+  100300 |          1 |           0 | localhost |    57637 |          40
+  100300 |          1 |           0 | localhost |    57640 |          41
+(2 rows)
+
+-- drop the connection right at the beginning
+SELECT citus.mitmproxy('flow.contains(b"assign_distributed_transaction_id").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+DROP TABLE append;
+WARNING:  connection not open
+CONTEXT:  while executing command on localhost:57640
+SQL statement "SELECT master_drop_all_shards(v_obj.objid, v_obj.schema_name, v_obj.object_name)"
+PL/pgSQL function citus_drop_trigger() line 21 at PERFORM
+WARNING:  could not connect to shard "append_100300" on node "localhost:57640"
+DETAIL:  Marking this shard placement for deletion
+CONTEXT:  SQL statement "SELECT master_drop_all_shards(v_obj.objid, v_obj.schema_name, v_obj.object_name)"
+PL/pgSQL function citus_drop_trigger() line 21 at PERFORM
+WARNING:  connection not open
+CONTEXT:  while executing command on localhost:57640
+WARNING:  connection not open
+CONTEXT:  while executing command on localhost:57640
+WARNING:  connection not open
+CONTEXT:  while executing command on localhost:57640
+SELECT * FROM pg_dist_shard;
+ logicalrelid | shardid | shardstorage | shardminvalue | shardmaxvalue 
+--------------+---------+--------------+---------------+---------------
+(0 rows)
+
+SELECT * FROM pg_dist_shard_placement;
+ shardid | shardstate | shardlength | nodename  | nodeport | placementid 
+---------+------------+-------------+-----------+----------+-------------
+  100300 |          3 |           0 | localhost |    57640 |          41
+(1 row)
+
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+CREATE TABLE append (id int);
+SELECT create_distributed_table('append', 'id', 'append');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+SELECT master_create_empty_shard('append');
+ master_create_empty_shard 
+---------------------------
+                    100301
+(1 row)
+
+SELECT * FROM pg_dist_shard;
+ logicalrelid | shardid | shardstorage | shardminvalue | shardmaxvalue 
+--------------+---------+--------------+---------------+---------------
+ append       |  100301 | t            |               | 
+(1 row)
+
+SELECT * FROM pg_dist_shard_placement;
+ shardid | shardstate | shardlength | nodename  | nodeport | placementid 
+---------+------------+-------------+-----------+----------+-------------
+  100301 |          1 |           0 | localhost |    57637 |          43
+  100300 |          3 |           0 | localhost |    57640 |          41
+  100301 |          1 |           0 | localhost |    57640 |          42
+(3 rows)
+
+SELECT citus.mitmproxy('flow.contains(b"DROP TABLE IF EXISTS").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+DROP TABLE append;
+ERROR:  server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+CONTEXT:  while executing command on localhost:57640
+SQL statement "SELECT master_drop_all_shards(v_obj.objid, v_obj.schema_name, v_obj.object_name)"
+PL/pgSQL function citus_drop_trigger() line 21 at PERFORM
+SELECT * FROM pg_dist_shard;
+ logicalrelid | shardid | shardstorage | shardminvalue | shardmaxvalue 
+--------------+---------+--------------+---------------+---------------
+ append       |  100301 | t            |               | 
+(1 row)
+
+SELECT * FROM pg_dist_shard_placement;
+ shardid | shardstate | shardlength | nodename  | nodeport | placementid 
+---------+------------+-------------+-----------+----------+-------------
+  100301 |          1 |           0 | localhost |    57637 |          43
+  100300 |          3 |           0 | localhost |    57640 |          41
+  100301 |          1 |           0 | localhost |    57640 |          42
+(3 rows)
+
+-- next steps:
+-- DROP TABLE IF EXISTS
+-- PREPARE TRANSACTION
+-- COMMIT PREPARED
