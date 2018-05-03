@@ -5,3 +5,4 @@ test: failure_setup
 test: failure_testing
 test: failure_create_empty_shard_rep_factor_1
 test: failure_create_empty_shard
+test: failure_drop_table
