@@ -1,11 +1,15 @@
-CREATE TABLE append_tt1(id int);
-SELECT create_distributed_table('append_tt1', 'id', 'append');
+SET citus.next_shard_id TO 100200;
+ALTER SEQUENCE pg_catalog.pg_dist_placement_placementid_seq RESTART 30;
+SET citus.shard_replication_factor TO 2;
+CREATE TABLE append_tt2(id int);
+SELECT create_distributed_table('append_tt2', 'id', 'append');
  create_distributed_table 
 --------------------------
  
 (1 row)
 
 -- prove that master_create_empty_shard is non-transactional, BEGIN is never sent
+-- (if it was then we would see an error here)
 SELECT citus.mitmproxy('flow.contains(b"BEGIN").kill()');
  mitmproxy 
 -----------
@@ -13,14 +17,36 @@ SELECT citus.mitmproxy('flow.contains(b"BEGIN").kill()');
 (1 row)
 
 BEGIN;
-SELECT master_create_empty_shard('append_tt1');
+SELECT master_create_empty_shard('append_tt2');
  master_create_empty_shard 
 ---------------------------
-                    102012
+                    100200
+(1 row)
+
+SELECT master_create_empty_shard('append_tt2');
+ master_create_empty_shard 
+---------------------------
+                    100201
 (1 row)
 
 ROLLBACK;
---   even though the shard was actually created the ROLLBACK drops it from our metadata
+  -- even though the shard was actually created the ROLLBACK drops it from our metadata
+SELECT * FROM pg_dist_shard_placement;
+ shardid | shardstate | shardlength | nodename | nodeport | placementid 
+---------+------------+-------------+----------+----------+-------------
+(0 rows)
+
+-- kill the connection on the first server response
+SELECT citus.mitmproxy('flow.matches(b"^R").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SELECT master_create_empty_shard('append_tt2');
+WARNING:  could not connect to node "localhost:57640"
+ERROR:  could only create 1 of 2 of required shard replicas
+  -- again, nothing was added to the metadata, this create failed!
 SELECT * FROM pg_dist_shard_placement;
  shardid | shardstate | shardlength | nodename | nodeport | placementid 
 ---------+------------+-------------+----------+----------+-------------
@@ -33,33 +59,38 @@ SELECT citus.mitmproxy('flow.contains(b"CREATE TABLE").kill()');
  
 (1 row)
 
-SELECT master_create_empty_shard('append_tt1');
+SELECT master_create_empty_shard('append_tt2');
 ERROR:  server closed the connection unexpectedly
 	This probably means the server terminated abnormally
 	before or while processing the request.
 CONTEXT:  while executing command on localhost:57640
---  again, nothing was added to the metadata, this create failed!
+  -- again, nothing was added to the metadata, this create failed!
 SELECT * FROM pg_dist_shard_placement;
  shardid | shardstate | shardlength | nodename | nodeport | placementid 
 ---------+------------+-------------+----------+----------+-------------
 (0 rows)
 
--- this time it should work, the other worker gets the shard
-SET citus.shard_replication_factor TO 1;
-SELECT master_create_empty_shard('append_tt1');
- master_create_empty_shard 
----------------------------
-                    102014
+-- kill the connection when we try to close it:
+SELECT citus.mitmproxy('flow.matches(b"^X").kill()');
+ mitmproxy 
+-----------
+ 
 (1 row)
 
---  finally we have a shard to add
+SELECT master_create_empty_shard('append_tt2');
+ master_create_empty_shard 
+---------------------------
+                    100204
+(1 row)
+
 SELECT * FROM pg_dist_shard_placement;
  shardid | shardstate | shardlength | nodename  | nodeport | placementid 
 ---------+------------+-------------+-----------+----------+-------------
-  102014 |          1 |           0 | localhost |    57637 |          11
-(1 row)
+  100204 |          1 |           0 | localhost |    57637 |          35
+  100204 |          1 |           0 | localhost |    57640 |          36
+(2 rows)
 
-DROP TABLE append_tt1;
+DROP TABLE append_tt2;
 SELECT citus.mitmproxy('flow.allow()');
  mitmproxy 
 -----------
