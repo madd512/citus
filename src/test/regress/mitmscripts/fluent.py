@@ -161,11 +161,27 @@ class After(Handler, ActionsMixin, FilterableMixin):
 class RootHandler(Handler, ActionsMixin, FilterableMixin):
     pass
 
+class RecorderCommand:
+    def __init__(self):
+        self.root = self
+        self.command = None
+
+    def dump(self):
+        # When the user calls dump() we return everything we've captured
+        self.command = 'dump'
+        return self
+
+    def reset(self):
+        # If the user calls reset() we dump all captured packets without returning them
+        self.command = 'reset'
+        return self
+
 # helper functions
 
 def build_handler(spec):
     root = RootHandler()
-    handler = eval(spec, {'__builtins__': {}}, {'flow': root})
+    recorder = RecorderCommand()
+    handler = eval(spec, {'__builtins__': {}}, {'flow': root, 'recorder': recorder})
     return handler.root
 
 def print_message(tcp_msg):
@@ -181,14 +197,42 @@ handler = None
 command_thread = None
 command_queue = queue.Queue()
 response_queue = queue.Queue()
+captured_messages = queue.Queue()
 
 def listen_for_commands(fifoname):
+    def handle_recorder(recorder):
+        result = ''
+
+        if recorder.command is 'reset':
+            result = ''
+        elif recorder.command is not 'dump':
+            # this should never happen
+            raise Exception('Unrecognized command: {}'.format(recorder.command))
+
+        try:
+            while True:
+                message = captured_messages.get(block=False)
+                if recorder.command is 'reset':
+                    continue
+                result += "\nmessage from {}: {}".format(
+                    "client" if message.from_client else "server",
+                    strutils.bytes_to_escaped_str(message.content)
+                ).replace('\\', '\\\\') # this last replace is for COPY's sake
+        except queue.Empty:
+            pass
+
+        with open(fifoname, mode='w') as fifo:
+            fifo.write('{}\n'.format(result))
+
     while True:
         with open(fifoname, mode='r') as fifo:
             slug = fifo.read()
 
         try:
-            build_handler(slug)
+            handler = build_handler(slug)
+            if isinstance(handler, RecorderCommand):
+                handle_recorder(handler)
+                continue
         except Exception as e:
             result = str(e)
         else:
@@ -229,7 +273,6 @@ def tick():
     # being called.
     try:
         slug = command_queue.get_nowait()
-        build_handler(slug)
     except queue.Empty:
         return
 
@@ -270,6 +313,7 @@ def next_layer(layer):
 def tcp_message(flow):
     tcp_msg = flow.messages[-1]
 
+    captured_messages.put(tcp_msg)
     print_message(tcp_msg)
     handler._accept(flow, tcp_msg)
     return
