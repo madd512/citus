@@ -22,10 +22,11 @@ SELECT create_distributed_table('append', 'id', 'append');
 (1 row)
 
 DROP TABLE append;
-SELECT citus.mitmproxy('recorder.dump()');
- mitmproxy 
------------
- 
+-- prove no network traffic happend
+SELECT count(1) FROM citus.mitmproxy('recorder.dump()');
+ count 
+-------
+     1
 (1 row)
 
 SELECT citus.mitmproxy('flow.allow()');
@@ -47,16 +48,12 @@ SELECT master_create_empty_shard('append');
                     100300
 (1 row)
 
-SELECT citus.mitmproxy('recorder.dump()');
-                                                                                                                                                                                                                                                                                                         mitmproxy                                                                                                                                                                                                                                                                                                          
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- 
- message from client: \x00\x00\x00W\x00\x03\x00\x00user\x00postgres\x00database\x00regression\x00application_name\x00citus\x00client_encoding\x00UTF8\x00\x00
- message from server: R\x00\x00\x00\x08\x00\x00\x00\x00S\x00\x00\x00\x1bapplication_name\x00citus\x00S\x00\x00\x00\x19client_encoding\x00UTF8\x00S\x00\x00\x00\x17DateStyle\x00ISO, MDY\x00S\x00\x00\x00\x19integer_datetimes\x00on\x00S\x00\x00\x00\x1bIntervalStyle\x00postgres\x00S\x00\x00\x00\x14is_superuser\x00on\x00S\x00\x00\x00\x19server_encoding\x00UTF8\x00S\x00\x00\x00\x18server_version\x0010.3\x00S\x00\x00\x00#session_authorization\x00postgres\x00S\x00\x00\x00#standard_conforming_strings\x00on\x00S\x00\x00\x00\x18TimeZone\x00US/Pacific\x00K\x00\x00\x00\x0c\x00\x00o=\xfbbU\x81Z\x00\x00\x00\x05I
- message from client: Q\x00\x00\x00^SELECT worker_apply_shard_ddl_command (100300, 'CREATE TABLE public.append (id integer)')\x00
- message from server: T\x00\x00\x007\x00\x01worker_apply_shard_ddl_command\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\xe6\x00\x04\xff\xff\xff\xff\x00\x00D\x00\x00\x00\n\x00\x01\x00\x00\x00\x00C\x00\x00\x00\rSELECT 1\x00Z\x00\x00\x00\x05I
- message from client: X\x00\x00\x00\x04
-(6 rows)
+-- this time we intercepted some packets
+SELECT count(1) FROM citus.mitmproxy('recorder.dump()');
+ count 
+-------
+     6
+(1 row)
 
 SELECT * FROM pg_dist_shard;
  logicalrelid | shardid | shardstorage | shardminvalue | shardmaxvalue 
@@ -72,6 +69,8 @@ SELECT * FROM pg_dist_shard_placement;
 (2 rows)
 
 -- drop the connection right at the beginning
+-- we fail before the transaction can be started, so Citus has no choice but to continue
+-- with dropping the table, shards on the other worker have already been dropped
 SELECT citus.mitmproxy('flow.contains(b"assign_distributed_transaction_id").kill()');
  mitmproxy 
 -----------
@@ -150,6 +149,14 @@ ERROR:  server closed the connection unexpectedly
 CONTEXT:  while executing command on localhost:57640
 SQL statement "SELECT master_drop_all_shards(v_obj.objid, v_obj.schema_name, v_obj.object_name)"
 PL/pgSQL function citus_drop_trigger() line 17 at PERFORM
+-- we're inside a transaction so we rollback when the connection failure happens, the
+-- table is still there
+SELECT * FROM pg_dist_partition;
+ logicalrelid | partmethod |                                                        partkey                                                         | colocationid | repmodel 
+--------------+------------+------------------------------------------------------------------------------------------------------------------------+--------------+----------
+ append       | a          | {VAR :varno 1 :varattno 1 :vartype 23 :vartypmod -1 :varcollid 0 :varlevelsup 0 :varnoold 1 :varoattno 1 :location -1} |            0 | c
+(1 row)
+
 SELECT * FROM pg_dist_shard;
  logicalrelid | shardid | shardstorage | shardminvalue | shardmaxvalue 
 --------------+---------+--------------+---------------+---------------
@@ -164,6 +171,62 @@ SELECT * FROM pg_dist_shard_placement;
   100301 |          1 |           0 | localhost |    57640 |          42
 (3 rows)
 
+SELECT citus.mitmproxy('flow.contains(b"PREPARE TRANSACTION").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+-- everything is rolled back again, we're still in a transaction
+DROP TABLE append;
+ERROR:  connection not open
+CONTEXT:  while executing command on localhost:57640
+SELECT citus.mitmproxy('flow.contains(b"COMMIT PREPARED").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SELECT count(1) FROM pg_dist_transaction;
+ count 
+-------
+     8
+(1 row)
+
+-- we've already sent COMMIT PREPARED to the other worker, so there's no turning back now!
+-- we have, however, gained an entry in pg_dist_transaction. A later call to
+-- recover_prepared_transactions() will fix that.
+DROP TABLE append;
+WARNING:  connection not open
+CONTEXT:  while executing command on localhost:57640
+WARNING:  failed to commit transaction on localhost:57640
+WARNING:  failed to roll back prepared transaction 'citus_0_21113_16_4'
+HINT:  Run "COMMIT PREPARED 'citus_0_21113_16_4'" on localhost:57640
+WARNING:  connection not open
+CONTEXT:  while executing command on localhost:57640
+SELECT count(1) FROM pg_dist_transaction;
+ count 
+-------
+    10
+(1 row)
+
+-- okay, clean up after ourselves
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SELECT recover_prepared_transactions();
+ recover_prepared_transactions 
+-------------------------------
+                             1
+(1 row)
+
 -- next steps:
 -- PREPARE TRANSACTION
 -- COMMIT PREPARED
+-- variables:
+-- 2PC
+-- replication factor
+-- append / hash distribution
