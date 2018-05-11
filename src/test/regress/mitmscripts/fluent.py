@@ -1,4 +1,6 @@
 import re
+import socket
+import struct
 import threading
 import queue
 
@@ -103,6 +105,10 @@ class ActionsMixin:
         self.next = KillAllHandler(self.root)
         return self.next
 
+    def reset(self):
+        self.next = ResetHandler(self.root)
+        return self.next
+
 class AcceptHandler(Handler):
     def __init__(self, root):
         super().__init__(root)
@@ -121,6 +127,30 @@ class KillAllHandler(Handler):
         super().__init__(root)
     def _handle(self, flow, message):
         return 'stop'
+
+class ResetHandler(Handler):
+    # try to force a RST to be sent, something went very wrong!
+    def __init__(self, root):
+        super().__init__(root)
+    def _handle(self, flow, message):
+        flow.kill() # tell mitmproxy this connection should be closed
+
+        client_conn = flow.client_conn # connections.ClientConnection(tcp.BaseHandler)
+        conn = client_conn.connection
+
+        # cause linux to send a RST
+        LINGER_ON, LINGER_TIMEOUT = 1, 0
+        conn.setsockopt(
+            socket.SOL_SOCKET, socket.SO_LINGER,
+            struct.pack('ii', LINGER_ON, LINGER_TIMEOUT)
+        )
+        conn.close()
+
+        # closing the connection isn't ideal, this thread later crashes when mitmproxy
+        # tries to call conn.shutdown(), but there's nothing else to clean up so that's
+        # maybe okay
+
+        return 'done'
 
 class Contains(Handler, ActionsMixin, FilterableMixin):
     def __init__(self, root, pattern):
