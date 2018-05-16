@@ -1,0 +1,178 @@
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SET citus.task_executor_type TO 'real-time';
+SET citus.shard_count = 2; -- one per worker
+SET citus.shard_replication_factor = 2; -- one shard per worker
+CREATE TABLE agg_test (id int, val int, flag bool, kind int);
+SELECT create_distributed_table('agg_test', 'id');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+INSERT INTO agg_test VALUES (1, 1, true, 99), (2, 2, false, 99), (2, 3, true, 88);
+-- block queries, but the other worker is still here, so we should get the right results
+SELECT citus.mitmproxy('flow.contains(b"bool_or").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SELECT bool_or(flag) FROM agg_test;
+WARNING:  could not consume data from worker node
+ bool_or 
+---------
+ t
+(1 row)
+
+DROP TABLE agg_test;
+SET citus.shard_replication_factor = 1;  -- workers contain disjoint subsets of the data
+CREATE TABLE agg_test (id int, val int, flag bool, kind int);
+SELECT create_distributed_table('agg_test', 'id');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+INSERT INTO agg_test VALUES (1, 1, true, 99), (2, 2, false, 99), (2, 3, true, 88);
+-- the query should fail, since we can't reach all the data it wants to hit
+SELECT bool_or(flag) FROM agg_test;
+WARNING:  could not consume data from worker node
+WARNING:  could not consume data from worker node
+WARNING:  could not consume data from worker node
+ERROR:  failed to execute task 2
+DROP TABLE agg_test;
+-- copied over from multi_outer_join.sql
+CREATE FUNCTION create_tables() RETURNS void
+AS $$
+  CREATE TABLE multi_outer_join_left
+  (
+  	l_custkey integer not null,
+  	l_name varchar(25) not null,
+  	l_address varchar(40) not null,
+  	l_nationkey integer not null,
+  	l_phone char(15) not null,
+  	l_acctbal decimal(15,2) not null,
+  	l_mktsegment char(10) not null,
+  	l_comment varchar(117) not null
+  );
+  
+  CREATE TABLE multi_outer_join_right
+  (
+  	r_custkey integer not null,
+  	r_name varchar(25) not null,
+  	r_address varchar(40) not null,
+  	r_nationkey integer not null,
+  	r_phone char(15) not null,
+  	r_acctbal decimal(15,2) not null,
+  	r_mktsegment char(10) not null,
+  	r_comment varchar(117) not null
+  );
+  COPY multi_outer_join_left FROM '/home/brian/Work/citus/src/test/regress/data/customer-1-10.data' with delimiter '|';
+  COPY multi_outer_join_left FROM '/home/brian/Work/citus/src/test/regress/data/customer-11-20.data' with delimiter '|';
+  COPY multi_outer_join_right FROM '/home/brian/Work/citus/src/test/regress/data/customer-1-15.data' with delimiter '|';
+$$ LANGUAGE SQL;
+SELECT create_tables();
+ create_tables 
+---------------
+ 
+(1 row)
+
+SELECT create_distributed_table('multi_outer_join_left', 'l_custkey');
+NOTICE:  Copying data from local table...
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+SELECT create_distributed_table('multi_outer_join_right', 'r_custkey');
+NOTICE:  Copying data from local table...
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+-- run a simple outer join
+SELECT
+	min(l_custkey), max(l_custkey)
+FROM
+	multi_outer_join_left a LEFT JOIN multi_outer_join_right b ON (l_custkey = r_custkey);
+ min | max 
+-----+-----
+   1 |  20
+(1 row)
+
+-- block the COPY
+SELECT citus.mitmproxy('flow.contains(b"multi_outer_join_left").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SELECT
+	min(l_custkey), max(l_custkey)
+FROM
+	multi_outer_join_left a LEFT JOIN multi_outer_join_right b ON (l_custkey = r_custkey);
+WARNING:  could not consume data from worker node
+WARNING:  could not consume data from worker node
+WARNING:  could not consume data from worker node
+ERROR:  failed to execute task 2
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+DROP TABLE multi_outer_join_left;
+DROP TABLE multi_outer_join_right;
+-- okay, try again with a higher shard replication factor
+SET citus.shard_replication_factor = 2; -- one shard per worker
+SELECT create_tables();
+ create_tables 
+---------------
+ 
+(1 row)
+
+SELECT create_distributed_table('multi_outer_join_left', 'l_custkey');
+NOTICE:  Copying data from local table...
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+SELECT create_distributed_table('multi_outer_join_right', 'r_custkey');
+NOTICE:  Copying data from local table...
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+-- the other worker is reachable, so this should work
+SELECT citus.mitmproxy('flow.contains(b"multi_outer_join_left").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SELECT
+	min(l_custkey), max(l_custkey)
+FROM
+	multi_outer_join_left a LEFT JOIN multi_outer_join_right b ON (l_custkey = r_custkey);
+WARNING:  could not consume data from worker node
+ min | max 
+-----+-----
+   1 |  20
+(1 row)
+
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+DROP TABLE multi_outer_join_left;
+DROP TABLE multi_outer_join_right;
