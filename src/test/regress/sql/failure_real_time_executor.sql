@@ -96,3 +96,4 @@ FROM
 SELECT citus.mitmproxy('flow.allow()');
 DROP TABLE multi_outer_join_left;
 DROP TABLE multi_outer_join_right;
+DROP FUNCTION create_tables();

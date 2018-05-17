@@ -7,3 +7,4 @@ test: failure_create_empty_shard_rep_factor_1
 test: failure_create_empty_shard
 test: failure_drop_table
 test: failure_real_time_executor
+test: failure_task_tracker_executor

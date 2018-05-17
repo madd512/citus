@@ -65,6 +65,7 @@ class Handler:
                 if self.root is not self:
                     raise
                 self.next = KillHandler(self)
+                flow.kill()
         elif result == 'done':
             # stop processing this packet, move on to the next one
             return
