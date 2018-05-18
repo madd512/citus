@@ -1,0 +1,101 @@
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SET citus.shard_count = 2; -- one per worker
+SET citus.shard_replication_factor = 2; -- one shard per worker
+CREATE TABLE agg_test (id int, val int, flag bool, kind int);
+SELECT create_distributed_table('agg_test', 'id');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+INSERT INTO agg_test VALUES (1, 1, true, 99), (3, 2, false, 99), (3, 3, true, 88);
+-- the correct answer
+SELECT bool_or(flag) FROM agg_test WHERE id = 3;
+ bool_or 
+---------
+ t
+(1 row)
+
+-- block queries. the other worker still exists though, so this should still work
+SELECT citus.mitmproxy('flow.contains(b"bool_or").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SELECT bool_or(flag) FROM agg_test WHERE id = 3;
+WARNING:  server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+CONTEXT:  while executing command on localhost:57640
+ bool_or 
+---------
+ t
+(1 row)
+
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+DROP TABLE agg_test;
+SET citus.shard_replication_factor = 1;  -- workers contain disjoint subsets of the data
+CREATE TABLE agg_test (id int, val int, flag bool, kind int);
+SELECT create_distributed_table('agg_test', 'id');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+INSERT INTO agg_test VALUES (1, 1, true, 99), (2, 2, false, 99), (2, 3, true, 88);
+  -- it should work
+SELECT citus.mitmproxy('recorder.reset()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SELECT bool_or(flag) FROM agg_test WHERE id = 2;
+ bool_or 
+---------
+ t
+(1 row)
+
+SELECT count(1) FROM citus.mitmproxy('recorder.dump()'); -- a query was sent to the worker
+ count 
+-------
+     3
+(1 row)
+
+  -- the query should fail, since we can't reach all the data it wants to hit
+SELECT citus.mitmproxy('flow.contains(b"bool_or").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SELECT bool_or(flag) FROM agg_test WHERE id = 2;
+WARNING:  server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+CONTEXT:  while executing command on localhost:57640
+ERROR:  could not receive query results
+SELECT count(1) FROM citus.mitmproxy('recorder.dump()'); -- a response was blocked
+ count 
+-------
+     2
+(1 row)
+
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+DROP TABLE agg_test;
