@@ -1,0 +1,107 @@
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SET citus.shard_count = 1;
+SET citus.shard_replication_factor = 2; -- one shard per worker
+SET citus.multi_shard_commit_protocol TO '1pc';
+SET citus.next_shard_id TO 100400;
+ALTER SEQUENCE pg_catalog.pg_dist_placement_placementid_seq RESTART 100;
+CREATE TABLE copy_test (key int, value int);
+SELECT create_distributed_table('copy_test', 'key');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
+SELECT citus.mitmproxy('flow.contains(b"assign_distributed_transaction").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
+WARNING:  connection not open
+CONTEXT:  while executing command on localhost:57640
+COPY copy_test, line 1: "0, 0"
+ERROR:  failure on connection marked as essential: localhost:57640
+CONTEXT:  COPY copy_test, line 1: "0, 0"
+SELECT citus.mitmproxy('flow.contains(b"FROM STDIN WITH").kill()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
+ERROR:  server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+CONTEXT:  while executing command on localhost:57640
+COPY copy_test, line 1: "0, 0"
+SELECT citus.mitmproxy('flow.matches(b"^d").kill()'); -- raw rows from the client
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
+ERROR:  failed to COPY to shard 100400 on localhost:57640
+SELECT count(1) FROM pg_dist_shard_placement WHERE shardid IN (
+  SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'copy_test'::regclass
+) AND shardstate = 3;
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(1) FROM copy_test;
+ count 
+-------
+     4
+(1 row)
+
+SELECT citus.mitmproxy('flow.matches(b"COMMIT[^T]").kill()'); -- don't match "COMMITTED"
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
+WARNING:  connection not open
+CONTEXT:  while executing command on localhost:57640
+WARNING:  failed to commit critical transaction on localhost:57640, metadata is likely out of sync
+WARNING:  connection not open
+CONTEXT:  while executing command on localhost:57640
+SELECT count(1) FROM pg_dist_shard_placement WHERE shardid IN (
+  SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'copy_test'::regclass
+) AND shardstate = 3;
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(1) FROM copy_test;
+ count 
+-------
+     8
+(1 row)
+
+SELECT citus.mitmproxy('flow.allow()');
+ mitmproxy 
+-----------
+ 
+(1 row)
+
+SELECT * FROM pg_dist_shard_placement WHERE shardid IN (
+  SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'copy_test'::regclass
+);
+ shardid | shardstate | shardlength | nodename  | nodeport | placementid 
+---------+------------+-------------+-----------+----------+-------------
+  100400 |          1 |           0 | localhost |    57637 |         100
+  100400 |          3 |           0 | localhost |    57640 |         101
+(2 rows)
+
+DROP TABLE copy_test;
