@@ -18,3 +18,5 @@
 /multi_mx_copy_data.out
 /multi_behavioral_analytics_create_table.out
 /multi_insert_select_behavioral_analytics_create_table.out
+/failure_real_time_executor.out
+/failure_task_tracker_executor.out
