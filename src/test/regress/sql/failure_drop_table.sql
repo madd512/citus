@@ -19,7 +19,7 @@ SELECT create_distributed_table('append', 'id', 'append');
 SELECT master_create_empty_shard('append');
 
 -- this time we intercepted some packets
-SELECT count(1) FROM citus.mitmproxy('recorder.dump()');
+SELECT count(1) > 0 FROM citus.mitmproxy('recorder.dump()');
 
 SELECT * FROM pg_dist_shard;
 SELECT * FROM pg_dist_shard_placement;
