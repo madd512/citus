@@ -49,10 +49,10 @@ SELECT master_create_empty_shard('append');
 (1 row)
 
 -- this time we intercepted some packets
-SELECT count(1) FROM citus.mitmproxy('recorder.dump()');
- count 
--------
-     6
+SELECT count(1) > 0 FROM citus.mitmproxy('recorder.dump()');
+ ?column? 
+----------
+ t
 (1 row)
 
 SELECT * FROM pg_dist_shard;
