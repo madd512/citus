@@ -55,12 +55,14 @@ SELECT count(1) FROM pg_dist_transaction;
 -- we've already sent COMMIT PREPARED to the other worker, so there's no turning back now!
 -- we have, however, gained an entry in pg_dist_transaction. A later call to
 -- recover_prepared_transactions() will fix that.
+SET citus.enable_unique_prepared_txn_ids TO false;
 DROP TABLE append;
 SELECT count(1) FROM pg_dist_transaction;
 
 -- okay, clean up after ourselves
 SELECT citus.mitmproxy('flow.allow()');
 SELECT recover_prepared_transactions();
+SET citus.enable_unique_prepared_txn_ids TO true;
 
 -- next steps:
 -- PREPARE TRANSACTION
