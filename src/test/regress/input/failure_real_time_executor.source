@@ -53,9 +53,9 @@ AS $$
   	r_mktsegment char(10) not null,
   	r_comment varchar(117) not null
   );
-  COPY multi_outer_join_left FROM '/home/brian/Work/citus/src/test/regress/data/customer-1-10.data' with delimiter '|';
-  COPY multi_outer_join_left FROM '/home/brian/Work/citus/src/test/regress/data/customer-11-20.data' with delimiter '|';
-  COPY multi_outer_join_right FROM '/home/brian/Work/citus/src/test/regress/data/customer-1-15.data' with delimiter '|';
+  COPY multi_outer_join_left FROM '@abs_srcdir@/data/customer-1-10.data' with delimiter '|';
+  COPY multi_outer_join_left FROM '@abs_srcdir@/data/customer-11-20.data' with delimiter '|';
+  COPY multi_outer_join_right FROM '@abs_srcdir@/data/customer-1-15.data' with delimiter '|';
 $$ LANGUAGE SQL;
 
 SELECT create_tables();
