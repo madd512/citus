@@ -10,3 +10,4 @@ test: failure_real_time_executor
 test: failure_task_tracker_executor
 test: failure_router_executor
 test: failure_1pc_copy_hash
+test: failure_1pc_copy_append
