@@ -1,6 +1,9 @@
 import re
+import os
+import signal
 import socket
 import struct
+import time
 import threading
 import queue
 
@@ -110,6 +113,10 @@ class ActionsMixin:
         self.next = ResetHandler(self.root)
         return self.next
 
+    def cancel(self, pid):
+        self.next = CancelHandler(self.root, pid)
+        return self.next
+
 class AcceptHandler(Handler):
     def __init__(self, root):
         super().__init__(root)
@@ -151,6 +158,17 @@ class ResetHandler(Handler):
         # tries to call conn.shutdown(), but there's nothing else to clean up so that's
         # maybe okay
 
+        return 'done'
+
+class CancelHandler(Handler):
+    'Send a SIGINT to the process'
+    def __init__(self, root, pid):
+        super().__init__(root)
+        self.pid = pid
+    def _handle(self, flow, message):
+        os.kill(self.pid, signal.SIGINT)
+        # give the signal a chance to be received before we let the packet through
+        time.sleep(0.1)
         return 'done'
 
 class Contains(Handler, ActionsMixin, FilterableMixin):
