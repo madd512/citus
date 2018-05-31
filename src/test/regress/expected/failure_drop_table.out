@@ -9,8 +9,7 @@ SELECT citus.mitmproxy('flow.kill()');
 SELECT citus.mitmproxy('recorder.reset()');
  mitmproxy 
 -----------
- 
-(1 row)
+(0 rows)
 
 -- none of these commands generate network traffic
 SET citus.shard_replication_factor TO 2;
@@ -26,7 +25,7 @@ DROP TABLE append;
 SELECT count(1) FROM citus.mitmproxy('recorder.dump()');
  count 
 -------
-     1
+     0
 (1 row)
 
 SELECT citus.mitmproxy('flow.allow()');
