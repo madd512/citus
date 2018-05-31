@@ -271,7 +271,7 @@ def listen_for_commands(fifoname):
             pass
 
         with open(fifoname, mode='w') as fifo:
-            fifo.write('{}\n'.format(result))
+            fifo.write('{}'.format(result))
 
     while True:
         with open(fifoname, mode='r') as fifo:
