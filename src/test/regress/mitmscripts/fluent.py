@@ -1,15 +1,19 @@
 import re
 import os
+import pprint
 import signal
 import socket
 import struct
-import time
 import threading
+import time
+import traceback
 import queue
 
 from mitmproxy import ctx
 from mitmproxy.utils import strutils
 from mitmproxy.proxy.protocol import TlsLayer, RawTCPLayer
+
+import protocol
 
 '''
 Use with a command line like this:
@@ -237,7 +241,8 @@ def print_message(tcp_msg):
     print("[message] from {} to {}:\r\n{}".format(
         "client" if tcp_msg.from_client else "server",
         "server" if tcp_msg.from_client else "client",
-        strutils.bytes_to_escaped_str(tcp_msg.content)
+        strutils.bytes_to_escaped_str(tcp_msg.content),
+        tcp_msg.content.hex(),
     ))
 
 # thread which listens for commands
@@ -263,9 +268,16 @@ def listen_for_commands(fifoname):
                 message = captured_messages.get(block=False)
                 if recorder.command is 'reset':
                     continue
+                kaitai = protocol.parse_message(
+                    message.content,
+                    from_frontend=message.from_client,
+                    is_first_message=message.is_initial
+                )
+                pprint.pprint(protocol.pretty_print_struct(kaitai))
+                print(protocol.struct_repr(kaitai))
                 result += "\nmessage from {}: {}".format(
                     "client" if message.from_client else "server",
-                    strutils.bytes_to_escaped_str(message.content)
+                    protocol.struct_repr(kaitai)
                 ).replace('\\', '\\\\') # this last replace is for COPY's sake
         except queue.Empty:
             pass
@@ -283,6 +295,7 @@ def listen_for_commands(fifoname):
                 handle_recorder(handler)
                 continue
         except Exception as e:
+            traceback.print_exc()
             result = str(e)
         else:
             result = None
@@ -362,7 +375,12 @@ def next_layer(layer):
 def tcp_message(flow):
     tcp_msg = flow.messages[-1]
 
+    not_initial = getattr(flow, 'not_initial', False)
+    tcp_msg.is_initial = not not_initial
+
     captured_messages.put(tcp_msg)
     print_message(tcp_msg)
     handler._accept(flow, tcp_msg)
+
+    flow.not_initial = True
     return
