@@ -1247,6 +1247,7 @@ PlanAlterTableStmt(AlterTableStmt *alterTableStatement, const char *alterTableCo
 	bool isDistributedRelation = false;
 	List *commandList = NIL;
 	ListCell *commandCell = NULL;
+	bool executeSequentially = false;
 
 	/* first check whether a distributed relation is affected */
 	if (alterTableStatement->relation == NULL)
@@ -1295,8 +1296,8 @@ PlanAlterTableStmt(AlterTableStmt *alterTableStatement, const char *alterTableCo
 	}
 
 	/*
-	 * We check if there is a ADD FOREIGN CONSTRAINT command in sub commands list.
-	 * If there is we assign referenced releation id to rightRelationId and we also
+	 * We check if there is a ADD/DROP FOREIGN CONSTRAINT command in sub commands list.
+	 * If there is we assign referenced relation id to rightRelationId and we also
 	 * set skip_validation to true to prevent PostgreSQL to verify validity of the
 	 * foreign constraint in master. Validity will be checked in workers anyway.
 	 */
@@ -1330,6 +1331,23 @@ PlanAlterTableStmt(AlterTableStmt *alterTableStatement, const char *alterTableCo
 				 * transaction is in process, which causes deadlock.
 				 */
 				constraint->skip_validation = true;
+			}
+		}
+		else if (alterTableType == AT_DropConstraint)
+		{
+			char *constraintName = command->name;
+			if (ConstraintIsAForeignKeyToReferenceTable(constraintName, leftRelationId))
+			{
+				executeSequentially = true;
+			}
+		}
+		else if (alterTableType == AT_DropColumn)
+		{
+			char *droppedColumnName = command->name;
+			if (ForeignKeyExistsFromColumnToReferenceTable(droppedColumnName,
+														   leftRelationId))
+			{
+				executeSequentially = true;
 			}
 		}
 #if (PG_VERSION_NUM >= 100000)
@@ -1374,6 +1392,7 @@ PlanAlterTableStmt(AlterTableStmt *alterTableStatement, const char *alterTableCo
 	ddlJob->targetRelationId = leftRelationId;
 	ddlJob->concurrentIndexCmd = false;
 	ddlJob->commandString = alterTableCommand;
+	ddlJob->executeSequentially = executeSequentially;
 
 	if (rightRelationId)
 	{

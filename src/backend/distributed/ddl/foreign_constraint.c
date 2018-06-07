@@ -22,10 +22,70 @@
 #include "distributed/master_protocol.h"
 #include "distributed/multi_join_order.h"
 #include "utils/fmgroids.h"
+#include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/ruleutils.h"
 #include "utils/syscache.h"
+
+
+/*
+ * TableHasForeignKeyToReferenceTable function scans the pgConstraint table to
+ * fetch all of the constraints on the given relationId and see if at least one
+ * of them is a foreign key referencing to a reference table.
+ */
+bool
+ConstraintIsAForeignKeyToReferenceTable(char *name, Oid relationId)
+{
+	Relation pgConstraint = NULL;
+	SysScanDesc scanDescriptor = NULL;
+	ScanKeyData scanKey[2];
+	int scanKeyCount = 2;
+	HeapTuple heapTuple = NULL;
+	bool foreignKeyToReferenceTable = false;
+
+	pgConstraint = heap_open(ConstraintRelationId, AccessShareLock);
+	ScanKeyInit(&scanKey[0],
+				Anum_pg_constraint_conname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum(name));
+
+	ScanKeyInit(&scanKey[1],
+				Anum_pg_constraint_connamespace,
+				BTEqualStrategyNumber, F_OIDEQ,
+				get_rel_namespace(relationId));
+
+	scanDescriptor = systable_beginscan(pgConstraint, ConstraintNameNspIndexId, true,
+										NULL,
+										scanKeyCount, scanKey);
+
+	heapTuple = systable_getnext(scanDescriptor);
+	while (HeapTupleIsValid(heapTuple))
+	{
+		Oid referencedTableId;
+		Form_pg_constraint constraintForm = (Form_pg_constraint) GETSTRUCT(heapTuple);
+
+		if (constraintForm->contype != CONSTRAINT_FOREIGN)
+		{
+			heapTuple = systable_getnext(scanDescriptor);
+			continue;
+		}
+
+		referencedTableId = constraintForm->confrelid;
+		if (PartitionMethod(referencedTableId) == DISTRIBUTE_BY_NONE)
+		{
+			foreignKeyToReferenceTable = true;
+			break;
+		}
+
+		heapTuple = systable_getnext(scanDescriptor);
+	}
+
+	/* clean up scan and close system catalog */
+	systable_endscan(scanDescriptor);
+	heap_close(pgConstraint, AccessShareLock);
+	return foreignKeyToReferenceTable;
+}
 
 
 /*
@@ -306,6 +366,82 @@ ErrorIfUnsupportedForeignConstraint(Relation relation, char distributionMethod,
 	/* clean up scan and close system catalog */
 	systable_endscan(scanDescriptor);
 	heap_close(pgConstraint, AccessShareLock);
+}
+
+
+bool
+ForeignKeyExistsFromColumnToReferenceTable(char *droppedColumnName,
+										   Oid leftRelationId)
+{
+	Relation pgConstraint = NULL;
+	SysScanDesc scanDescriptor = NULL;
+	ScanKeyData scanKey[1];
+	int scanKeyCount = 1;
+	HeapTuple heapTuple = NULL;
+	bool foreignKeyToReferenceTableIncludesGivenColumn = false;
+	bool isNull = false;
+	Datum referencingColumnsDatum;
+	Datum *referencingColumnArray;
+	int referencingColumnCount = 0;
+	int attrIdx;
+
+	pgConstraint = heap_open(ConstraintRelationId, AccessShareLock);
+
+	ScanKeyInit(&scanKey[0],
+				Anum_pg_constraint_connamespace,
+				BTEqualStrategyNumber, F_OIDEQ,
+				get_rel_namespace(leftRelationId));
+
+	scanDescriptor = systable_beginscan(pgConstraint, ConstraintNameNspIndexId, true,
+										NULL,
+										scanKeyCount, scanKey);
+
+	heapTuple = systable_getnext(scanDescriptor);
+	while (HeapTupleIsValid(heapTuple))
+	{
+		Oid referencedTableId;
+		Form_pg_constraint constraintForm = (Form_pg_constraint) GETSTRUCT(heapTuple);
+
+		if (constraintForm->contype != CONSTRAINT_FOREIGN)
+		{
+			heapTuple = systable_getnext(scanDescriptor);
+			continue;
+		}
+
+		referencingColumnsDatum = SysCacheGetAttr(CONSTROID, heapTuple,
+												  Anum_pg_constraint_conkey, &isNull);
+		deconstruct_array(DatumGetArrayTypeP(referencingColumnsDatum), INT2OID, 2, true,
+						  's', &referencingColumnArray, NULL, &referencingColumnCount);
+		referencedTableId = constraintForm->confrelid;
+
+		if (PartitionMethod(referencedTableId) == DISTRIBUTE_BY_NONE)
+		{
+			for (attrIdx = 0; attrIdx < referencingColumnCount; ++attrIdx)
+			{
+				AttrNumber referencingAttrNo = DatumGetInt16(
+					referencingColumnArray[attrIdx]);
+
+				char *colName = get_relid_attribute_name(leftRelationId,
+														 referencingAttrNo);
+				if (strcmp(colName, droppedColumnName) == 0)
+				{
+					foreignKeyToReferenceTableIncludesGivenColumn = true;
+					break;
+				}
+			}
+		}
+		if (foreignKeyToReferenceTableIncludesGivenColumn)
+		{
+			break;
+		}
+
+		heapTuple = systable_getnext(scanDescriptor);
+	}
+
+	/* clean up scan and close system catalog */
+	systable_endscan(scanDescriptor);
+	heap_close(pgConstraint, AccessShareLock);
+	return foreignKeyToReferenceTableIncludesGivenColumn;
 }
 
 
