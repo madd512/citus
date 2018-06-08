@@ -13,7 +13,7 @@ from mitmproxy import ctx
 from mitmproxy.utils import strutils
 from mitmproxy.proxy.protocol import TlsLayer, RawTCPLayer
 
-import protocol
+import structs
 
 '''
 Use with a command line like this:
@@ -219,9 +219,11 @@ class RecorderCommand:
         self.root = self
         self.command = None
 
-    def dump(self):
+    def dump(self, normalize_shards=True, dump_unknown_messages=False):
         # When the user calls dump() we return everything we've captured
         self.command = 'dump'
+        self.normalize_shards = normalize_shards
+        self.dump_unknown_messages = dump_unknown_messages
         return self
 
     def reset(self):
@@ -232,6 +234,7 @@ class RecorderCommand:
 # helper functions
 
 def build_handler(spec):
+    print("spec: ", spec)
     root = RootHandler()
     recorder = RecorderCommand()
     handler = eval(spec, {'__builtins__': {}}, {'flow': root, 'recorder': recorder})
@@ -268,16 +271,22 @@ def listen_for_commands(fifoname):
                 message = captured_messages.get(block=False)
                 if recorder.command is 'reset':
                     continue
-                kaitai = protocol.parse_message(
-                    message.content,
-                    from_frontend=message.from_client,
-                    is_first_message=message.is_initial
-                )
-                pprint.pprint(protocol.pretty_print_struct(kaitai))
-                print(protocol.struct_repr(kaitai))
+
+                if message.is_initial:
+                    result += '[initial message]'
+                    continue
+
+                parsed = structs.parse(message.content, from_frontend=message.from_client)
+
+                print(message.content)
+                print(message)
+
+                pretty = structs.print(parsed)
+                print(pretty)
+
                 result += "\nmessage from {}: {}".format(
                     "client" if message.from_client else "server",
-                    protocol.struct_repr(kaitai)
+                    pretty
                 ).replace('\\', '\\\\') # this last replace is for COPY's sake
         except queue.Empty:
             pass
@@ -307,8 +316,6 @@ def listen_for_commands(fifoname):
         with open(fifoname, mode='w') as fifo:
             fifo.write('{}\n'.format(result))
 
-# callbacks for mitmproxy
-
 def replace_thread(fifoname):
     global command_thread
 
@@ -324,6 +331,7 @@ def replace_thread(fifoname):
     command_thread = threading.Thread(target=listen_for_commands, args=(fifoname,), daemon=True)
     command_thread.start()
 
+# callbacks for mitmproxy
 
 def load(loader):
     loader.add_option('slug', str, 'flow.allow()', "A script to run")
