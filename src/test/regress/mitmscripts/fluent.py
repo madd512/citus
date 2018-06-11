@@ -304,7 +304,7 @@ def listen_for_commands(fifoname):
     def emit_message(message):
         if message.is_initial:
             return emit_row(
-                message.connection_id, message.from_client, '[initial message]'
+                message.connection_id, message.from_client, repr(message.content)
             )
 
         pretty = structs.print(message.parsed)
@@ -313,7 +313,9 @@ def listen_for_commands(fifoname):
         if pretty is '[]' or not message.parsed or len(message.parsed) == 0:
             pretty = message.content
 
-        return emit_row(message.connection_id, message.from_client, pretty)
+        both = "{} --- {}".format(pretty, message.content)
+
+        return emit_row(message.connection_id, message.from_client, both)
 
     def handle_recorder(recorder):
         global connection_count
