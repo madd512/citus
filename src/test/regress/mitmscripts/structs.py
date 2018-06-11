@@ -161,10 +161,12 @@ class Query(FrontendMessage):
         For example:
         >>> normalize_timestamps('2018-06-07 05:18:19.388992-07')
         'XXXX-XX-XX XX:XX:XX.XXXXXX-XX'
+        >>> normalize_timestamps('2018-06-11 05:30:43.01382-07')
+        'XXXX-XX-XX XX:XX:XX.XXXXXX-XX'
         '''
 
         pattern = re.compile(
-            '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{6}-[0-9]{2}'
+            '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{2,6}-[0-9]{2}'
         )
 
         return re.sub(pattern, 'XXXX-XX-XX XX:XX:XX.XXXXXX-XX', content)
