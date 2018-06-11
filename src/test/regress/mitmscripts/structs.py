@@ -153,6 +153,16 @@ class EmptyQueryResponse(BackendMessage):
     key = 'I'
     struct = Struct()
 
+class CopyOutResponse(BackendMessage):
+    key = 'H'
+    struct = Struct(
+        "format" / Int8ub,
+        "columncount" / Int16ub,
+        "columns" / Array(this.columncount, Struct(
+            "format" / Int16ub
+        ))
+    )
+
 class ReadyForQuery(BackendMessage):
     key='Z'
     struct = Struct("state"/Enum(Byte,
