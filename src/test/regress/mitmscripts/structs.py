@@ -133,7 +133,47 @@ class Query(FrontendMessage):
 
     @staticmethod
     def print(message):
-        return "Query(query={}".format(message.query)
+        query = message.query
+        query = Query.normalize_shards(query)
+        query = Query.normalize_timestamps(query)
+        return "Query(query={}".format(query)
+
+    @staticmethod
+    def normalize_shards(content):
+        '''
+        For example:
+        >>> normalize_shards(
+        >>>   'COPY public.copy_test_120340 (key, value) FROM STDIN WITH (FORMAT BINARY))'
+        >>> )
+        'COPY public.copy_test_XXXXXX (key, value) FROM STDIN WITH (FORMAT BINARY))'
+        '''
+        result = content
+        pattern = re.compile('public\.[a-z_]+(?P<shardid>[0-9]+)')
+        for match in pattern.finditer(content):
+            span = match.span('shardid')
+            replacement = 'X'*( span[1] - span[0] )
+            result = result[:span[0]] + replacement + result[span[1]:]
+        return result
+
+    @staticmethod
+    def normalize_timestamps(content):
+        '''
+        For example:
+        >>> normalize_timestamps('2018-06-07 05:18:19.388992-07')
+        'XXXX-XX-XX XX:XX:XX.XXXXXX-XX'
+        '''
+
+        pattern = re.compile(
+            '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{6}-[0-9]{2}'
+        )
+
+        return re.sub(pattern, 'XXXX-XX-XX XX:XX:XX.XXXXXX-XX', content)
+
+        for match in pattern.finditer(content):
+            span = match.span()
+            replacement = 'XXXX-XX-XX XX:XX:XX.XXXXXX-XX'
+            result = result[:span[0]] + replacement + result[span[1]:]
+        return result
 
 class Terminate(FrontendMessage):
     key = 'X'

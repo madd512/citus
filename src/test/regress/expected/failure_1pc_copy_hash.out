@@ -16,12 +16,37 @@ SELECT create_distributed_table('copy_test', 'key');
  
 (1 row)
 
+SELECT citus.clear_network_traffic();
+ clear_network_traffic 
+-----------------------
+ 
+(1 row)
+
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT count(1) FROM copy_test;
  count 
 -------
      4
 (1 row)
+
+SELECT citus.dump_network_traffic(dump_unknown_messages => true);
+                                                                                                                                                                                                                                                                                                   dump_network_traffic                                                                                                                                                                                                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [initial message]
+ message from server: ['AuthenticationOk()', 'ParameterStatus(application_name=citus)', 'ParameterStatus(client_encoding=UTF8)', 'ParameterStatus(DateStyle=ISO, MDY)', 'ParameterStatus(integer_datetimes=on)', 'ParameterStatus(IntervalStyle=postgres)', 'ParameterStatus(is_superuser=on)', 'ParameterStatus(server_encoding=UTF8)', 'ParameterStatus(server_version=10.3)', 'ParameterStatus(session_authorization=postgres)', 'ParameterStatus(standard_conforming_strings=on)', 'ParameterStatus(TimeZone=Turkey)', 'BackendKeyData(XXX)', 'ReadyForQuery(state=idle)']
+ message from client: ["Query(query=BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;SELECT assign_distributed_transaction_id(0, 4, 'XXXX-XX-XX XX:XX:XX.XXXXXX-XX');"]
+ message from server: ['CommandComplete(command=BEGIN)', "RowDescription(fieldcount=1,fields=['F(name=assign_distributed_transaction_id,tableoid=0,colattrnum=0,typoid=2278,typlen=4,typmod=-1,format_code=0)'])", 'DataRow(columncount=1,columns=["C(length=0,value=b\'\')"])', 'CommandComplete(command=SELECT 1)', 'ReadyForQuery(state=in_transaction_block)']
+ message from client: ['Query(query=COPY public.copy_test_XXXXXX (key, value) FROM STDIN WITH (FORMAT BINARY)']
+ message from server: ["Backend(type=71,length=11,raw_body=b'\\x01\\x00\\x02\\x00\\x01\\x00\\x01',body=b'\\x01\\x00\\x02\\x00\\x01\\x00\\x01')"]
+ message from client: ["CopyData(data=b'PGCOPY\\n\\xff\\r\\n\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00')", "CopyData(data=b'\\x00\\x02\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x00')", "CopyData(data=b'\\x00\\x02\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x01\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x01')", "CopyData(data=b'\\x00\\x02\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x02\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x04')", "CopyData(data=b'\\x00\\x02\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x03\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\t')", "CopyData(data=b'\\xff\\xff')", 'CopyDone()']
+ message from server: ['CommandComplete(command=COPY 4)', 'ReadyForQuery(state=in_transaction_block)']
+ message from client: ['Query(query=COMMIT']
+ message from server: ['CommandComplete(command=COMMIT)', 'ReadyForQuery(state=idle)']
+ message from client: ['Terminate()'][initial message]
+ message from server: ['AuthenticationOk()', 'ParameterStatus(application_name=citus)', 'ParameterStatus(client_encoding=UTF8)', 'ParameterStatus(DateStyle=ISO, MDY)', 'ParameterStatus(integer_datetimes=on)', 'ParameterStatus(IntervalStyle=postgres)', 'ParameterStatus(is_superuser=on)', 'ParameterStatus(server_encoding=UTF8)', 'ParameterStatus(server_version=10.3)', 'ParameterStatus(session_authorization=postgres)', 'ParameterStatus(standard_conforming_strings=on)', 'ParameterStatus(TimeZone=Turkey)', 'BackendKeyData(XXX)', 'ReadyForQuery(state=idle)']
+ message from client: ['Query(query=SELECT count(1) AS count FROM public.copy_test_XXXXXX copy_test']
+ message from server: ["RowDescription(fieldcount=1,fields=['F(name=count,tableoid=0,colattrnum=0,typoid=20,typlen=8,typmod=-1,format_code=0)'])", 'DataRow(columncount=1,columns=["C(length=0,value=b\'\')"])', 'CommandComplete(command=SELECT 1)', 'ReadyForQuery(state=idle)']
+(14 rows)
 
 -- ==== kill the connection when we try to start a transaction ====
 -- the query should abort
@@ -37,6 +62,13 @@ CONTEXT:  while executing command on localhost:57640
 COPY copy_test, line 1: "0, 0"
 ERROR:  failure on connection marked as essential: localhost:57640
 CONTEXT:  COPY copy_test, line 1: "0, 0"
+SELECT citus.dump_network_traffic();
+                                                                          dump_network_traffic                                                                          
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 
+ message from client: ["Query(query=BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;SELECT assign_distributed_transaction_id(0, 5, 'XXXX-XX-XX XX:XX:XX.XXXXXX-XX');"]
+(2 rows)
+
 -- ==== kill the connection when we try to start the COPY ====
 -- the query should abort
 SELECT citus.mitmproxy('flow.contains(b"FROM STDIN WITH").killall()');
