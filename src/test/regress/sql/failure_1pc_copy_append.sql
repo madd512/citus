@@ -9,8 +9,12 @@ ALTER SEQUENCE pg_catalog.pg_dist_placement_placementid_seq RESTART 100;
 CREATE TABLE copy_test (key int, value int);
 SELECT create_distributed_table('copy_test', 'key', 'append');
 
+SELECT citus.clear_network_traffic();
+
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT count(1) FROM copy_test;
+
+SELECT * FROM citus.dump_network_traffic();
 
 ---- all of the following tests test behavior with 2 shard placements ----
 SHOW citus.shard_replication_factor;
@@ -44,14 +48,14 @@ SELECT * FROM pg_dist_shard s, pg_dist_shard_placement p
 SELECT count(1) FROM copy_test;
 
 ---- cancel the connection when we send the data ----
-SELECT citus.mitmproxy(format('conn.contains(b"PGCOPY").cancel(%s)', pg_backend_pid()));
+SELECT citus.mitmproxy(format('conn.onCopyData().cancel(%s)', pg_backend_pid()));
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT * FROM pg_dist_shard s, pg_dist_shard_placement p
   WHERE (s.shardid = p.shardid) AND s.logicalrelid = 'copy_test'::regclass;
 SELECT count(1) FROM copy_test;
 
 ---- kill the connection when we try to get the size of the table ----
-SELECT citus.mitmproxy('conn.contains(b"pg_table_size").kill()');
+SELECT citus.mitmproxy('conn.onQuery(query="pg_table_size").kill()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT * FROM pg_dist_shard s, pg_dist_shard_placement p
   WHERE (s.shardid = p.shardid) AND s.logicalrelid = 'copy_test'::regclass;
@@ -62,14 +66,14 @@ SELECT count(1) FROM copy_test;
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 
 ---- kill the connection when we try to get the min, max of the table ----
-SELECT citus.mitmproxy('conn.contains(b"SELECT min(key), max(key)").kill()');
+SELECT citus.mitmproxy('conn.onQuery(query="SELECT min\(key\), max\(key\)").kill()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT * FROM pg_dist_shard s, pg_dist_shard_placement p
   WHERE (s.shardid = p.shardid) AND s.logicalrelid = 'copy_test'::regclass;
 SELECT count(1) FROM copy_test;
 
 ---- kill the connection when we try to COMMIT ----
-SELECT citus.mitmproxy('conn.matches(b"^Q\x00\x00\x00\x0bCOMMIT\x00").kill()');
+SELECT citus.mitmproxy('conn.onQuery(query="^COMMIT").kill()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT * FROM pg_dist_shard s, pg_dist_shard_placement p
   WHERE (s.shardid = p.shardid) AND s.logicalrelid = 'copy_test'::regclass;
