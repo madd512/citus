@@ -304,18 +304,11 @@ def listen_for_commands(fifoname):
     def emit_message(message):
         if message.is_initial:
             return emit_row(
-                message.connection_id, message.from_client, repr(message.content)
+                message.connection_id, message.from_client, '[initial message]'
             )
 
         pretty = structs.print(message.parsed)
-
-        # hack to debug travis
-        if pretty is '[]' or not message.parsed or len(message.parsed) == 0:
-            pretty = message.content
-
-        both = "{} --- {}".format(pretty, message.content)
-
-        return emit_row(message.connection_id, message.from_client, both)
+        return emit_row(message.connection_id, message.from_client, pretty)
 
     def handle_recorder(recorder):
         global connection_count
