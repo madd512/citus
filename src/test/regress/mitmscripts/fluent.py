@@ -100,6 +100,18 @@ class FilterableMixin:
         self.next = Matches(self.root, b"^H")
         return self.next
 
+    def __getattr__(self, attr):
+        '''
+        Methods such as .onQuery trigger when a packet with that name is intercepted
+        '''
+        if attr.startswith('on'):
+            if attr is 'onQuery':
+                def doit(**kwargs):
+                    self.next = OnPacket(self.root, "Query", kwargs)
+                    return self.next
+                return doit
+        raise AttributeError
+
 class ActionsMixin:
     def kill(self):
         self.next = KillHandler(self.root)
@@ -209,6 +221,27 @@ class After(Handler, ActionsMixin, FilterableMixin):
             return 'pass'
 
         flow._after_count += 1
+        return 'done'
+
+class OnPacket(Handler, ActionsMixin, FilterableMixin):
+    '''Triggers when a packet of the specified kind comes around'''
+    def __init__(self, root, packet_kind, kwargs):
+        super().__init__(root)
+        print(packet_kind, kwargs)
+        self.packet_kind = packet_kind
+        self.filters = kwargs
+    def _handle(self, flow, message):
+        if message.is_initial:
+            # if this is the first message in the connection we just skip it
+            return 'done'
+        parsed = structs.parse(message.content, from_frontend=message.from_client)
+        print(structs.print(parsed))
+        for msg in parsed:
+            typ = structs.message_type(msg, from_frontend=message.from_client)
+            if typ == self.packet_kind:
+                matches = structs.message_matches(msg, self.filters, message.from_client)
+                if matches:
+                    return 'pass'
         return 'done'
 
 class RootHandler(Handler, ActionsMixin, FilterableMixin):

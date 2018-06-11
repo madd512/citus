@@ -6,8 +6,13 @@ from construct import (
 )
 import construct.lib as cl
 
+import re
+
 class MessageMeta(type):
     def __init__(cls, name, bases, namespace):
+        '''
+        __init__ is called every time a subclass of MessageMeta is declared
+        '''
         if not hasattr(cls, "_msgtypes"):
             raise Exception("classes which use MessageMeta must have a '_msgtypes' field")
 
@@ -43,6 +48,10 @@ class Message:
         'Define this on subclasses you want to change the representation of'
         raise NotImplementedError
 
+    def typeof(message):
+        'Define this on subclasses you want to change the expressed type of'
+        return message._type
+
     @classmethod
     def _default_print(cls, name, msg):
         recur = cls.print_message
@@ -50,6 +59,20 @@ class Message:
             "{}={}".format(key, recur(value)) for key, value in msg.items()
             if not key.startswith('_')
         ))
+
+    @classmethod
+    def find_typeof(cls, msg):
+        if not hasattr(cls, "_msgtypes"):
+            raise Exception('Do not call this method on Message, call it on a subclass')
+        if isinstance(msg, cl.ListContainer):
+            return ValueError("do not call this on a list of messages")
+        if not isinstance(msg, cl.Container):
+            return ValueError("must call this on a parsed message")
+        if not hasattr(msg, "_type"):
+            return "Anonymous"
+        if msg._type and msg._type not in cls._classes:
+            return msg._type
+        return cls._classes[msg._type].typeof(msg)
 
     @classmethod
     def print_message(cls, msg):
@@ -236,6 +259,11 @@ class Frontend(FrontendMessage):
             raise NotImplementedError
         return FrontendMessage.print_message(message.body)
 
+    def typeof(message):
+        if isinstance(message.body, bytes):
+            return "Unknown"
+        return message.body._type
+
 class Backend(BackendMessage):
     struct = Struct(
         "type" / backend_msgtypes,
@@ -249,6 +277,11 @@ class Backend(BackendMessage):
         if isinstance(message.body, bytes):
             raise NotImplementedError
         return BackendMessage.print_message(message.body)
+
+    def typeof(message):
+        if isinstance(message.body, bytes):
+            return "Unknown"
+        return message.body._type
 
 # GreedyRange keeps reading messages until we hit EOF
 frontend_messages = GreedyRange(Frontend.struct)
@@ -267,3 +300,34 @@ def print(message):
     if message.from_frontend:
         return FrontendMessage.print_message(message)
     return BackendMessage.print_message(message)
+
+def message_type(message, from_frontend):
+    if from_frontend:
+        return FrontendMessage.find_typeof(message)
+    return BackendMessage.find_typeof(message)
+
+def message_matches(message, filters, from_frontend):
+    '''
+    Message is something like Backend(Query)) and fiters is something like query="COPY".
+
+    For now we only support strings, and treat them like a regex, which is matched against
+    the content of the wrapped message
+    '''
+    if message._type != 'Backend' and message._type != 'Frontend':
+        raise ValueError("can't handle {}".format(message._type))
+
+    wrapped = message.body
+    if isinstance(wrapped, bytes):
+        # we don't know which kind of message this is, so we can't match against it
+        return False
+
+    for key, value in filters.items():
+        if not isinstance(value, str):
+            raise ValueError("don't yet know how to handle {}".format(type(value)))
+
+        actual = getattr(wrapped, key)
+
+        if not re.search(value, actual):
+            return False
+
+    return True
