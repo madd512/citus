@@ -4,7 +4,7 @@ ALTER SYSTEM SET citus.recover_2pc_interval TO -1;
 ALTER SYSTEM set citus.enable_statistics_collection TO false;
 SELECT pg_reload_conf();
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 
 -- add the workers
 SELECT master_add_node('localhost', :worker_1_port);  -- the second worker

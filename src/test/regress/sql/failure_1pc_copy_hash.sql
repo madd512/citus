@@ -1,4 +1,4 @@
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 
 SET citus.shard_count = 1;
 SET citus.shard_replication_factor = 2; -- one shard per worker
@@ -19,7 +19,7 @@ SELECT * FROM citus.dump_network_traffic(dump_unknown_messages => true);
 -- ==== kill the connection when we try to start a transaction ====
 -- the query should abort
 
-SELECT citus.mitmproxy('flow.contains(b"assign_distributed_transaction").killall()');
+SELECT citus.mitmproxy('conn.contains(b"assign_distributed_transaction").killall()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 
 SELECT * FROM citus.dump_network_traffic();
@@ -27,29 +27,29 @@ SELECT * FROM citus.dump_network_traffic();
 -- ==== kill the connection when we try to start the COPY ====
 -- the query should abort
 
-SELECT citus.mitmproxy('flow.contains(b"FROM STDIN WITH").killall()');
+SELECT citus.mitmproxy('conn.contains(b"FROM STDIN WITH").killall()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 
 -- ==== kill the connection when we first start sending data ====
 -- the query should abort
 
-SELECT citus.mitmproxy('flow.matches(b"^d").killall()'); -- raw rows from the client
+SELECT citus.mitmproxy('conn.matches(b"^d").killall()'); -- raw rows from the client
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 
 -- ==== kill the connection when we try to send COMMIT ====
 -- the query should succeed, and the placement should be marked inactive
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 SELECT count(1) FROM pg_dist_shard_placement WHERE shardid IN (
   SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'copy_test'::regclass
 ) AND shardstate = 3;
 SELECT count(1) FROM copy_test;
 
-SELECT citus.mitmproxy('flow.matches(b"COMMIT[^T]").killall()'); -- don't match "COMMITTED"
+SELECT citus.mitmproxy('conn.matches(b"COMMIT[^T]").killall()'); -- don't match "COMMITTED"
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 
 -- the shard is marked invalid
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 SELECT count(1) FROM pg_dist_shard_placement WHERE shardid IN (
   SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'copy_test'::regclass
 ) AND shardstate = 3;
@@ -71,14 +71,14 @@ TRUNCATE copy_test;
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9 && echo 10' WITH CSV;
 
 -- kill the connection if the coordinator sends COMMIT. It doesn't, so nothing changes
-SELECT citus.mitmproxy('flow.matches(b"COMMIT[^T]").kill()');
+SELECT citus.mitmproxy('conn.matches(b"COMMIT[^T]").kill()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9 && echo 10' WITH CSV;
 
 SELECT * FROM copy_test;
 
 -- ==== clean up some more to prepare for tests with only one replica ====
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 
 TRUNCATE copy_test;
 UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE nodeport = :worker_1_port;
@@ -92,33 +92,33 @@ COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' W
 SELECT * FROM copy_test;
 
 -- the worker is unreachable
-SELECT citus.mitmproxy('flow.killall()');
+SELECT citus.mitmproxy('conn.killall()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 SELECT * FROM copy_test;
 
 -- the first message fails
-SELECT citus.mitmproxy('flow.contains(b"assign_distributed_transaction_id").killall()');
+SELECT citus.mitmproxy('conn.contains(b"assign_distributed_transaction_id").killall()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 SELECT * FROM copy_test;
 
 -- the COPY message fails
-SELECT citus.mitmproxy('flow.contains(b"FROM STDIN WITH").killall()');
+SELECT citus.mitmproxy('conn.contains(b"FROM STDIN WITH").killall()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 SELECT * FROM copy_test;
 
 -- the COPY data fails
-SELECT citus.mitmproxy('flow.contains(b"PGCOPY").killall()');
+SELECT citus.mitmproxy('conn.contains(b"PGCOPY").killall()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 SELECT * FROM copy_test;
 
 -- the COMMIT fails
-SELECT citus.mitmproxy('flow.matches(b"COMMIT[^T]").killall()');
+SELECT citus.mitmproxy('conn.matches(b"COMMIT[^T]").killall()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 SELECT * FROM copy_test;
 
 -- the placement is not marked invalid
@@ -127,9 +127,9 @@ SELECT * FROM pg_dist_shard_placement WHERE shardid IN (
 );
 
 -- the COMMIT makes it through but the connection dies before we get a response
-SELECT citus.mitmproxy('flow.matches(b"^C\x00\x00\x00\x0bCOMMIT").killall()');
+SELECT citus.mitmproxy('conn.matches(b"^C\x00\x00\x00\x0bCOMMIT").killall()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 
 SELECT * FROM pg_dist_shard_placement WHERE shardid IN (
   SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'copy_test'::regclass
@@ -138,5 +138,5 @@ SELECT * FROM copy_test;
 
 -- ==== Clean up, we're done here ====
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 DROP TABLE copy_test;

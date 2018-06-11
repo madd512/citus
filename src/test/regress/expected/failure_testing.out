@@ -8,7 +8,7 @@ SELECT create_distributed_table('test', 'a');
 BEGIN;
 UPDATE test SET b = 2 WHERE a = 2;
 ROLLBACK;
-SELECT citus.mitmproxy('flow.contains(b"UPDATE").kill()');
+SELECT citus.mitmproxy('conn.contains(b"UPDATE").kill()');
  mitmproxy 
 -----------
  
@@ -21,7 +21,7 @@ WARNING:  server closed the connection unexpectedly
 	before or while processing the request.
 CONTEXT:  while executing command on localhost:57640
 ROLLBACK;
-SELECT citus.mitmproxy('flow.contains(b"BEGIN").kill()');
+SELECT citus.mitmproxy('conn.contains(b"BEGIN").kill()');
  mitmproxy 
 -----------
  
@@ -33,7 +33,7 @@ WARNING:  connection not open
 CONTEXT:  while executing command on localhost:57640
 ROLLBACK;
 SET citus.multi_shard_commit_protocol = '2pc';
-SELECT citus.mitmproxy('flow.contains(b"COMMIT").kill()');
+SELECT citus.mitmproxy('conn.contains(b"COMMIT").kill()');
  mitmproxy 
 -----------
  
@@ -50,7 +50,7 @@ WARNING:  connection not open
 CONTEXT:  while executing command on localhost:57640
 WARNING:  connection not open
 CONTEXT:  while executing command on localhost:57640
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  

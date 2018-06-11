@@ -1,4 +1,4 @@
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 
 SET citus.shard_count = 2; -- one per worker
 SET citus.shard_replication_factor = 2; -- one shard per worker
@@ -11,10 +11,10 @@ INSERT INTO agg_test VALUES (1, 1, true, 99), (3, 2, false, 99), (3, 3, true, 88
 SELECT bool_or(flag) FROM agg_test WHERE id = 3;
 
 -- block queries. the other worker still exists though, so this should still work
-SELECT citus.mitmproxy('flow.contains(b"bool_or").kill()');
+SELECT citus.mitmproxy('conn.contains(b"bool_or").kill()');
 SELECT bool_or(flag) FROM agg_test WHERE id = 3;
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 DROP TABLE agg_test;
 
 SET citus.shard_replication_factor = 1;  -- workers contain disjoint subsets of the data
@@ -26,12 +26,12 @@ INSERT INTO agg_test VALUES (1, 1, true, 99), (2, 2, false, 99), (2, 3, true, 88
   -- it should work
 SELECT citus.mitmproxy('recorder.reset()');
 SELECT bool_or(flag) FROM agg_test WHERE id = 2;
-SELECT count(1) FROM citus.mitmproxy('recorder.dump()'); -- a query was sent to the worker
+SELECT count(1) FROM citus.dump_network_traffic(); -- a query was sent to the worker
 
   -- the query should fail, since we can't reach all the data it wants to hit
-SELECT citus.mitmproxy('flow.contains(b"bool_or").kill()');
+SELECT citus.mitmproxy('conn.contains(b"bool_or").kill()');
 SELECT bool_or(flag) FROM agg_test WHERE id = 2;
-SELECT count(1) FROM citus.mitmproxy('recorder.dump()'); -- a response was blocked
+SELECT count(1) FROM citus.dump_network_traffic(); -- a response was blocked
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 DROP TABLE agg_test;

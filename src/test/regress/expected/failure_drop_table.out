@@ -1,6 +1,6 @@
 SET citus.next_shard_id TO 100300;
 ALTER SEQUENCE pg_catalog.pg_dist_placement_placementid_seq RESTART 40;
-SELECT citus.mitmproxy('flow.kill()');
+SELECT citus.mitmproxy('conn.kill()');
  mitmproxy 
 -----------
  
@@ -22,13 +22,13 @@ SELECT create_distributed_table('append', 'id', 'append');
 
 DROP TABLE append;
 -- prove no network traffic happend
-SELECT count(1) FROM citus.mitmproxy('recorder.dump()');
+SELECT count(1) FROM citus.dump_network_traffic();
  count 
 -------
      0
 (1 row)
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -48,7 +48,7 @@ SELECT master_create_empty_shard('append');
 (1 row)
 
 -- this time we intercepted some packets
-SELECT count(1) > 0 FROM citus.mitmproxy('recorder.dump()');
+SELECT count(1) > 0 FROM citus.dump_network_traffic();
  ?column? 
 ----------
  t
@@ -70,7 +70,7 @@ SELECT * FROM pg_dist_shard_placement;
 -- drop the connection right at the beginning
 -- we fail before the transaction can be started, so Citus has no choice but to continue
 -- with dropping the table, shards on the other worker have already been dropped
-SELECT citus.mitmproxy('flow.contains(b"assign_distributed_transaction_id").kill()');
+SELECT citus.mitmproxy('conn.contains(b"assign_distributed_transaction_id").kill()');
  mitmproxy 
 -----------
  
@@ -102,7 +102,7 @@ SELECT * FROM pg_dist_shard_placement;
   100300 |          3 |           0 | localhost |    57640 |          41
 (1 row)
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -135,7 +135,7 @@ SELECT * FROM pg_dist_shard_placement;
   100301 |          1 |           0 | localhost |    57640 |          42
 (3 rows)
 
-SELECT citus.mitmproxy('flow.contains(b"DROP TABLE IF EXISTS").kill()');
+SELECT citus.mitmproxy('conn.contains(b"DROP TABLE IF EXISTS").kill()');
  mitmproxy 
 -----------
  
@@ -170,7 +170,7 @@ SELECT * FROM pg_dist_shard_placement;
   100301 |          1 |           0 | localhost |    57640 |          42
 (3 rows)
 
-SELECT citus.mitmproxy('flow.contains(b"PREPARE TRANSACTION").kill()');
+SELECT citus.mitmproxy('conn.contains(b"PREPARE TRANSACTION").kill()');
  mitmproxy 
 -----------
  
@@ -180,7 +180,7 @@ SELECT citus.mitmproxy('flow.contains(b"PREPARE TRANSACTION").kill()');
 DROP TABLE append;
 ERROR:  connection not open
 CONTEXT:  while executing command on localhost:57640
-SELECT citus.mitmproxy('flow.contains(b"COMMIT PREPARED").kill()');
+SELECT citus.mitmproxy('conn.contains(b"COMMIT PREPARED").kill()');
  mitmproxy 
 -----------
  
@@ -211,7 +211,7 @@ SELECT count(1) FROM pg_dist_transaction;
 (1 row)
 
 -- okay, clean up after ourselves
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
