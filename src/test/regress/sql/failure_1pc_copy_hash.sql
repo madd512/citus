@@ -9,14 +9,20 @@ ALTER SEQUENCE pg_catalog.pg_dist_placement_placementid_seq RESTART 100;
 CREATE TABLE copy_test (key int, value int);
 SELECT create_distributed_table('copy_test', 'key');
 
+SELECT citus.clear_network_traffic();
+
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT count(1) FROM copy_test;
+
+SELECT citus.dump_network_traffic(dump_unknown_messages => true);
 
 -- ==== kill the connection when we try to start a transaction ====
 -- the query should abort
 
 SELECT citus.mitmproxy('flow.contains(b"assign_distributed_transaction").killall()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
+
+SELECT citus.dump_network_traffic();
 
 -- ==== kill the connection when we try to start the COPY ====
 -- the query should abort
