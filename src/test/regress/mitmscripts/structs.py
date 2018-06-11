@@ -259,14 +259,14 @@ class ParameterStatus(BackendMessage):
     )
 
     def print(message):
-        name, value = ParameterStatus.normalize_timezone(message.name, message.value)
+        name, value = ParameterStatus.normalize(message.name, message.value)
         return "ParameterStatus({}={})".format(name, value)
 
     @staticmethod
-    def normalize_timezone(name, value):
-        if name != "TimeZone":
-            return (name, value)
-        return ('TimeZone', 'XXX')
+    def normalize(name, value):
+        if name in ('TimeZone', 'server_version'):
+            value = 'XXX'
+        return (name, value)
 
 class BackendKeyData(BackendMessage):
     key = 'K'
