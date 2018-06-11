@@ -308,7 +308,9 @@ class Frontend(FrontendMessage):
 
     def print(message):
         if isinstance(message.body, bytes):
-            raise NotImplementedError
+            return "Frontend(type={},body={})".format(
+                chr(message.type), message.body
+            )
         return FrontendMessage.print_message(message.body)
 
     def typeof(message):
@@ -327,7 +329,9 @@ class Backend(BackendMessage):
 
     def print(message):
         if isinstance(message.body, bytes):
-            raise NotImplementedError
+            return "Backend(type={},body={})".format(
+                chr(message.type), message.body
+            )
         return BackendMessage.print_message(message.body)
 
     def typeof(message):

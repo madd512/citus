@@ -37,7 +37,7 @@ SELECT * FROM citus.dump_network_traffic(dump_unknown_messages => true);
     0 | t           | ["Query(query=BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;SELECT assign_distributed_transaction_id(0, 4, 'XXXX-XX-XX XX:XX:XX.XXXXXX-XX');"]
     0 | f           | ['CommandComplete(command=BEGIN)', "RowDescription(fieldcount=1,fields=['F(name=assign_distributed_transaction_id,tableoid=0,colattrnum=0,typoid=2278,typlen=4,typmod=-1,format_code=0)'])", 'DataRow(columncount=1,columns=["C(length=0,value=b\'\')"])', 'CommandComplete(command=SELECT 1)', 'ReadyForQuery(state=in_transaction_block)']
     0 | t           | ['Query(query=COPY public.copy_test_XXXXXX (key, value) FROM STDIN WITH (FORMAT BINARY)']
-    0 | f           | ["Backend(type=71,length=11,raw_body=b'\\x01\\x00\\x02\\x00\\x01\\x00\\x01',body=b'\\x01\\x00\\x02\\x00\\x01\\x00\\x01')"]
+    0 | f           | ["Backend(type=G,body=b'\\x01\\x00\\x02\\x00\\x01\\x00\\x01')"]
     0 | t           | ["CopyData(data=b'PGCOPY\\n\\xff\\r\\n\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00')", "CopyData(data=b'\\x00\\x02\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x00')", "CopyData(data=b'\\x00\\x02\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x01\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x01')", "CopyData(data=b'\\x00\\x02\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x02\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x04')", "CopyData(data=b'\\x00\\x02\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\x03\\x00\\x00\\x00\\x04\\x00\\x00\\x00\\t')", "CopyData(data=b'\\xff\\xff')", 'CopyDone()']
     0 | f           | ['CommandComplete(command=COPY 4)', 'ReadyForQuery(state=in_transaction_block)']
     0 | t           | ['Query(query=COMMIT']
