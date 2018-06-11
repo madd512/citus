@@ -452,6 +452,5 @@ def tcp_message(flow):
     captured_messages.put(tcp_msg)
     print_message(tcp_msg)
 
-    # okay, finally, give the packet to the command which the user previously told us to
-    # use
+    # okay, finally, give the packet to the command the user wants us to use
     handler._accept(flow, tcp_msg)
