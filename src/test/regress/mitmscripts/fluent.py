@@ -294,35 +294,46 @@ command_thread = None
 command_queue = queue.Queue()
 response_queue = queue.Queue()
 captured_messages = queue.Queue()
+connection_count = 0
 
 def listen_for_commands(fifoname):
+
+    def emit_row(conn, from_client, message):
+        # we're using the COPY text format. It requires us to escape backslashes
+        cleaned = message.replace('\\', '\\\\')
+        return '{}\t{}\t{}'.format(conn, from_client, cleaned)
+
+    def emit_message(message):
+        if message.is_initial:
+            return emit_row(
+                message.connection_id, message.from_client, '[initial message]'
+            )
+
+        pretty = structs.print(message.parsed)
+
+        return emit_row(message.connection_id, message.from_client, pretty)
+
     def handle_recorder(recorder):
+        global connection_count
         result = ''
 
         if recorder.command is 'reset':
             result = ''
+            connection_count = 0
         elif recorder.command is not 'dump':
             # this should never happen
             raise Exception('Unrecognized command: {}'.format(recorder.command))
 
         try:
+            results = []
             while True:
                 message = captured_messages.get(block=False)
                 if recorder.command is 'reset':
                     continue
-
-                if message.is_initial:
-                    result += '[initial message]'
-                    continue
-
-                pretty = structs.print(message.parsed)
-
-                result += "\nmessage from {}: {}".format(
-                    "client" if message.from_client else "server",
-                    pretty
-                ).replace('\\', '\\\\') # this last replace is for COPY's sake
+                results.append(emit_message(message))
         except queue.Empty:
             pass
+        result = '\n'.join(results)
 
         with open(fifoname, mode='w') as fifo:
             fifo.write('{}'.format(result))
@@ -414,20 +425,33 @@ def next_layer(layer):
 
 
 def tcp_message(flow):
+    '''
+    This callback is hit every time mitmproxy receives a packet. It's the main entrypoint
+    into this script.
+    '''
+    global connection_count
+
     tcp_msg = flow.messages[-1]
 
-    not_initial = getattr(flow, 'not_initial', False)
-    tcp_msg.is_initial = not not_initial
+    # Keep track of all the different connections, assign a unique id to each
+    if not hasattr(flow, 'connection_id'):
+        flow.connection_id = connection_count
+        connection_count += 1  # this is not thread safe but I think that's fine
+    tcp_msg.connection_id = flow.connection_id
+
+    # The first packet the frontend sends shounld be parsed differently
+    tcp_msg.is_initial = len(flow.messages) == 1
 
     if tcp_msg.is_initial:
-        # skip parsing initial message for now
+        # skip parsing initial messages for now, they're not important
         tcp_msg.parsed = None
     else:
         tcp_msg.parsed = structs.parse(tcp_msg.content, from_frontend=tcp_msg.from_client)
 
+    # record the message, for debugging purposes
     captured_messages.put(tcp_msg)
     print_message(tcp_msg)
-    handler._accept(flow, tcp_msg)
 
-    flow.not_initial = True
-    return
+    # okay, finally, give the packet to the command which the user previously told us to
+    # use
+    handler._accept(flow, tcp_msg)
