@@ -310,7 +310,7 @@ def listen_for_commands(fifoname):
         pretty = structs.print(message.parsed)
 
         # hack to debug travis
-        if pretty is '[]':
+        if pretty is '[]' or not message.parsed or len(message.parsed) == 0:
             pretty = message.content
 
         return emit_row(message.connection_id, message.from_client, pretty)
