@@ -233,7 +233,6 @@ class OnPacket(Handler, ActionsMixin, FilterableMixin):
     '''Triggers when a packet of the specified kind comes around'''
     def __init__(self, root, packet_kind, kwargs):
         super().__init__(root)
-        print(packet_kind, kwargs)
         self.packet_kind = packet_kind
         self.filters = kwargs
     def _handle(self, flow, message):
@@ -271,7 +270,6 @@ class RecorderCommand:
 # helper functions
 
 def build_handler(spec):
-    print("spec: ", spec)
     root = RootHandler()
     recorder = RecorderCommand()
     handler = eval(spec, {'__builtins__': {}}, {'conn': root, 'recorder': recorder})
@@ -407,12 +405,10 @@ def configure(updated):
 
     if 'slug' in updated:
         text = ctx.options.slug
-        print('using script: {}'.format(text))
         handler = build_handler(text)
 
     if 'fifo' in updated:
         fifoname = ctx.options.fifo
-        print('using fifo: {}'.format(fifoname))
         replace_thread(fifoname)
 
 
@@ -454,7 +450,6 @@ def tcp_message(flow):
 
     # record the message, for debugging purposes
     captured_messages.put(tcp_msg)
-    print_message(tcp_msg)
 
     # okay, finally, give the packet to the command the user wants us to use
     handler._accept(flow, tcp_msg)
