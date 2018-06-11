@@ -103,13 +103,19 @@ class FilterableMixin:
     def __getattr__(self, attr):
         '''
         Methods such as .onQuery trigger when a packet with that name is intercepted
+
+        Adds support for commands such as:
+          flow.onQuery(query="COPY")
+
+        Returns a function because the above command is resolved in two steps:
+          flow.onQuery becomes flow.__getattr__("onQuery")
+          flow.onQuery(query="COPY") becomes flow.__getattr__("onQuery")(query="COPY")
         '''
         if attr.startswith('on'):
-            if attr is 'onQuery':
-                def doit(**kwargs):
-                    self.next = OnPacket(self.root, "Query", kwargs)
-                    return self.next
-                return doit
+            def doit(**kwargs):
+                self.next = OnPacket(self.root, attr[2:], kwargs)
+                return self.next
+            return doit
         raise AttributeError
 
 class ActionsMixin:
@@ -231,12 +237,10 @@ class OnPacket(Handler, ActionsMixin, FilterableMixin):
         self.packet_kind = packet_kind
         self.filters = kwargs
     def _handle(self, flow, message):
-        if message.is_initial:
+        if not message.parsed:
             # if this is the first message in the connection we just skip it
             return 'done'
-        parsed = structs.parse(message.content, from_frontend=message.from_client)
-        print(structs.print(parsed))
-        for msg in parsed:
+        for msg in message.parsed:
             typ = structs.message_type(msg, from_frontend=message.from_client)
             if typ == self.packet_kind:
                 matches = structs.message_matches(msg, self.filters, message.from_client)
@@ -280,6 +284,8 @@ def print_message(tcp_msg):
         strutils.bytes_to_escaped_str(tcp_msg.content),
         tcp_msg.content.hex(),
     ))
+    if tcp_msg.parsed:
+        print(structs.print(tcp_msg.parsed))
 
 # thread which listens for commands
 
@@ -309,13 +315,7 @@ def listen_for_commands(fifoname):
                     result += '[initial message]'
                     continue
 
-                parsed = structs.parse(message.content, from_frontend=message.from_client)
-
-                print(message.content)
-                print(message)
-
-                pretty = structs.print(parsed)
-                print(pretty)
+                pretty = structs.print(message.parsed)
 
                 result += "\nmessage from {}: {}".format(
                     "client" if message.from_client else "server",
@@ -418,6 +418,12 @@ def tcp_message(flow):
 
     not_initial = getattr(flow, 'not_initial', False)
     tcp_msg.is_initial = not not_initial
+
+    if tcp_msg.is_initial:
+        # skip parsing initial message for now
+        tcp_msg.parsed = None
+    else:
+        tcp_msg.parsed = structs.parse(tcp_msg.content, from_frontend=tcp_msg.from_client)
 
     captured_messages.put(tcp_msg)
     print_message(tcp_msg)
