@@ -1,4 +1,4 @@
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -31,7 +31,7 @@ SHOW citus.shard_replication_factor;
 (1 row)
 
 ---- kill the connection when we try to create the shard ----
-SELECT citus.mitmproxy('flow.contains(b"worker_apply_shard_ddl_command").kill()');
+SELECT citus.mitmproxy('conn.contains(b"worker_apply_shard_ddl_command").kill()');
  mitmproxy 
 -----------
  
@@ -57,7 +57,7 @@ SELECT count(1) FROM copy_test;
 (1 row)
 
 ---- kill the connection when we try to start a transaction ----
-SELECT citus.mitmproxy('flow.contains(b"assign_distributed_transaction_id").kill()');
+SELECT citus.mitmproxy('conn.contains(b"assign_distributed_transaction_id").kill()');
  mitmproxy 
 -----------
  
@@ -82,7 +82,7 @@ SELECT count(1) FROM copy_test;
 (1 row)
 
 ---- kill the connection when we start the COPY ----
-SELECT citus.mitmproxy('flow.contains(b"FROM STDIN WITH").kill()');
+SELECT citus.mitmproxy('conn.contains(b"FROM STDIN WITH").kill()');
  mitmproxy 
 -----------
  
@@ -108,7 +108,7 @@ SELECT count(1) FROM copy_test;
 (1 row)
 
 ---- kill the connection when we send the data ----
-SELECT citus.mitmproxy('flow.contains(b"PGCOPY").kill()');
+SELECT citus.mitmproxy('conn.contains(b"PGCOPY").kill()');
  mitmproxy 
 -----------
  
@@ -131,7 +131,7 @@ SELECT count(1) FROM copy_test;
 (1 row)
 
 ---- cancel the connection when we send the data ----
-SELECT citus.mitmproxy(format('flow.contains(b"PGCOPY").cancel(%s)', pg_backend_pid()));
+SELECT citus.mitmproxy(format('conn.contains(b"PGCOPY").cancel(%s)', pg_backend_pid()));
  mitmproxy 
 -----------
  
@@ -154,7 +154,7 @@ SELECT count(1) FROM copy_test;
 (1 row)
 
 ---- kill the connection when we try to get the size of the table ----
-SELECT citus.mitmproxy('flow.contains(b"pg_table_size").kill()');
+SELECT citus.mitmproxy('conn.contains(b"pg_table_size").kill()');
  mitmproxy 
 -----------
  
@@ -186,7 +186,7 @@ SELECT count(1) FROM copy_test;
 -- the other node, so the next copy will try to run it on our node
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 ---- kill the connection when we try to get the min, max of the table ----
-SELECT citus.mitmproxy('flow.contains(b"SELECT min(key), max(key)").kill()');
+SELECT citus.mitmproxy('conn.contains(b"SELECT min(key), max(key)").kill()');
  mitmproxy 
 -----------
  
@@ -217,7 +217,7 @@ SELECT count(1) FROM copy_test;
 (1 row)
 
 ---- kill the connection when we try to COMMIT ----
-SELECT citus.mitmproxy('flow.matches(b"^Q\x00\x00\x00\x0bCOMMIT\x00").kill()');
+SELECT citus.mitmproxy('conn.matches(b"^Q\x00\x00\x00\x0bCOMMIT\x00").kill()');
  mitmproxy 
 -----------
  
@@ -248,7 +248,7 @@ SELECT count(1) FROM copy_test;
 (1 row)
 
 -- ==== Clean up, we're done here ====
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  

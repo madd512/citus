@@ -1,4 +1,4 @@
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -34,7 +34,7 @@ SELECT * FROM citus.dump_network_traffic(dump_unknown_messages => true);
 ------+-------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     0 | t           | [initial message]
     0 | f           | ['AuthenticationOk()', 'ParameterStatus(application_name=citus)', 'ParameterStatus(client_encoding=UTF8)', 'ParameterStatus(DateStyle=ISO, MDY)', 'ParameterStatus(integer_datetimes=on)', 'ParameterStatus(IntervalStyle=postgres)', 'ParameterStatus(is_superuser=on)', 'ParameterStatus(server_encoding=UTF8)', 'ParameterStatus(server_version=10.3)', 'ParameterStatus(session_authorization=postgres)', 'ParameterStatus(standard_conforming_strings=on)', 'ParameterStatus(TimeZone=Turkey)', 'BackendKeyData(XXX)', 'ReadyForQuery(state=idle)']
-    0 | t           | ["Query(query=BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;SELECT assign_distributed_transaction_id(0, 4, 'XXXX-XX-XX XX:XX:XX.XXXXXX-XX');"]
+    0 | t           | ["Query(query=BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;SELECT assign_distributed_transaction_id(0, 51, 'XXXX-XX-XX XX:XX:XX.XXXXXX-XX');"]
     0 | f           | ['CommandComplete(command=BEGIN)', "RowDescription(fieldcount=1,fields=['F(name=assign_distributed_transaction_id,tableoid=0,colattrnum=0,typoid=2278,typlen=4,typmod=-1,format_code=0)'])", 'DataRow(columncount=1,columns=["C(length=0,value=b\'\')"])', 'CommandComplete(command=SELECT 1)', 'ReadyForQuery(state=in_transaction_block)']
     0 | t           | ['Query(query=COPY public.copy_test_XXXXXX (key, value) FROM STDIN WITH (FORMAT BINARY)']
     0 | f           | ["Backend(type=G,body=b'\\x01\\x00\\x02\\x00\\x01\\x00\\x01')"]
@@ -51,7 +51,7 @@ SELECT * FROM citus.dump_network_traffic(dump_unknown_messages => true);
 
 -- ==== kill the connection when we try to start a transaction ====
 -- the query should abort
-SELECT citus.mitmproxy('flow.contains(b"assign_distributed_transaction").killall()');
+SELECT citus.mitmproxy('conn.contains(b"assign_distributed_transaction").killall()');
  mitmproxy 
 -----------
  
@@ -64,14 +64,14 @@ COPY copy_test, line 1: "0, 0"
 ERROR:  failure on connection marked as essential: localhost:57640
 CONTEXT:  COPY copy_test, line 1: "0, 0"
 SELECT * FROM citus.dump_network_traffic();
- conn | from_client |                                                                      message                                                                      
-------+-------------+---------------------------------------------------------------------------------------------------------------------------------------------------
-    1 | t           | ["Query(query=BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;SELECT assign_distributed_transaction_id(0, 5, 'XXXX-XX-XX XX:XX:XX.XXXXXX-XX');"]
+ conn | from_client |                                                                      message                                                                       
+------+-------------+----------------------------------------------------------------------------------------------------------------------------------------------------
+    1 | t           | ["Query(query=BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;SELECT assign_distributed_transaction_id(0, 52, 'XXXX-XX-XX XX:XX:XX.XXXXXX-XX');"]
 (1 row)
 
 -- ==== kill the connection when we try to start the COPY ====
 -- the query should abort
-SELECT citus.mitmproxy('flow.contains(b"FROM STDIN WITH").killall()');
+SELECT citus.mitmproxy('conn.contains(b"FROM STDIN WITH").killall()');
  mitmproxy 
 -----------
  
@@ -85,7 +85,7 @@ CONTEXT:  while executing command on localhost:57640
 COPY copy_test, line 1: "0, 0"
 -- ==== kill the connection when we first start sending data ====
 -- the query should abort
-SELECT citus.mitmproxy('flow.matches(b"^d").killall()'); -- raw rows from the client
+SELECT citus.mitmproxy('conn.matches(b"^d").killall()'); -- raw rows from the client
  mitmproxy 
 -----------
  
@@ -95,7 +95,7 @@ COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' W
 ERROR:  failed to COPY to shard 100400 on localhost:57640
 -- ==== kill the connection when we try to send COMMIT ====
 -- the query should succeed, and the placement should be marked inactive
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -115,7 +115,7 @@ SELECT count(1) FROM copy_test;
      4
 (1 row)
 
-SELECT citus.mitmproxy('flow.matches(b"COMMIT[^T]").killall()'); -- don't match "COMMITTED"
+SELECT citus.mitmproxy('conn.matches(b"COMMIT[^T]").killall()'); -- don't match "COMMITTED"
  mitmproxy 
 -----------
  
@@ -128,7 +128,7 @@ WARNING:  failed to commit critical transaction on localhost:57640, metadata is 
 WARNING:  connection not open
 CONTEXT:  while executing command on localhost:57640
 -- the shard is marked invalid
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -162,7 +162,7 @@ COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9 &&
 ERROR:  missing data for column "value"
 CONTEXT:  COPY copy_test, line 5: "10"
 -- kill the connection if the coordinator sends COMMIT. It doesn't, so nothing changes
-SELECT citus.mitmproxy('flow.matches(b"COMMIT[^T]").kill()');
+SELECT citus.mitmproxy('conn.matches(b"COMMIT[^T]").kill()');
  mitmproxy 
 -----------
  
@@ -177,7 +177,7 @@ SELECT * FROM copy_test;
 (0 rows)
 
 -- ==== clean up some more to prepare for tests with only one replica ====
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -206,7 +206,7 @@ SELECT * FROM copy_test;
 (4 rows)
 
 -- the worker is unreachable
-SELECT citus.mitmproxy('flow.killall()');
+SELECT citus.mitmproxy('conn.killall()');
  mitmproxy 
 -----------
  
@@ -218,7 +218,7 @@ CONTEXT:  while executing command on localhost:57640
 COPY copy_test, line 1: "0, 0"
 ERROR:  failure on connection marked as essential: localhost:57640
 CONTEXT:  COPY copy_test, line 1: "0, 0"
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -234,7 +234,7 @@ SELECT * FROM copy_test;
 (4 rows)
 
 -- the first message fails
-SELECT citus.mitmproxy('flow.contains(b"assign_distributed_transaction_id").killall()');
+SELECT citus.mitmproxy('conn.contains(b"assign_distributed_transaction_id").killall()');
  mitmproxy 
 -----------
  
@@ -246,7 +246,7 @@ CONTEXT:  while executing command on localhost:57640
 COPY copy_test, line 1: "0, 0"
 ERROR:  failure on connection marked as essential: localhost:57640
 CONTEXT:  COPY copy_test, line 1: "0, 0"
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -262,7 +262,7 @@ SELECT * FROM copy_test;
 (4 rows)
 
 -- the COPY message fails
-SELECT citus.mitmproxy('flow.contains(b"FROM STDIN WITH").killall()');
+SELECT citus.mitmproxy('conn.contains(b"FROM STDIN WITH").killall()');
  mitmproxy 
 -----------
  
@@ -274,7 +274,7 @@ ERROR:  server closed the connection unexpectedly
 	before or while processing the request.
 CONTEXT:  while executing command on localhost:57640
 COPY copy_test, line 1: "0, 0"
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -290,7 +290,7 @@ SELECT * FROM copy_test;
 (4 rows)
 
 -- the COPY data fails
-SELECT citus.mitmproxy('flow.contains(b"PGCOPY").killall()');
+SELECT citus.mitmproxy('conn.contains(b"PGCOPY").killall()');
  mitmproxy 
 -----------
  
@@ -298,7 +298,7 @@ SELECT citus.mitmproxy('flow.contains(b"PGCOPY").killall()');
 
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 ERROR:  failed to COPY to shard 100400 on localhost:57640
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -314,7 +314,7 @@ SELECT * FROM copy_test;
 (4 rows)
 
 -- the COMMIT fails
-SELECT citus.mitmproxy('flow.matches(b"COMMIT[^T]").killall()');
+SELECT citus.mitmproxy('conn.matches(b"COMMIT[^T]").killall()');
  mitmproxy 
 -----------
  
@@ -328,7 +328,7 @@ WARNING:  connection not open
 CONTEXT:  while executing command on localhost:57640
 WARNING:  could not commit transaction for shard 100400 on any active node
 ERROR:  could not commit transaction on any active node
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -354,7 +354,7 @@ SELECT * FROM pg_dist_shard_placement WHERE shardid IN (
 (2 rows)
 
 -- the COMMIT makes it through but the connection dies before we get a response
-SELECT citus.mitmproxy('flow.matches(b"^C\x00\x00\x00\x0bCOMMIT").killall()');
+SELECT citus.mitmproxy('conn.matches(b"^C\x00\x00\x00\x0bCOMMIT").killall()');
  mitmproxy 
 -----------
  
@@ -368,7 +368,7 @@ WARNING:  connection not open
 CONTEXT:  while executing command on localhost:57640
 WARNING:  could not commit transaction for shard 100400 on any active node
 ERROR:  could not commit transaction on any active node
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -397,7 +397,7 @@ SELECT * FROM copy_test;
 (8 rows)
 
 -- ==== Clean up, we're done here ====
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  

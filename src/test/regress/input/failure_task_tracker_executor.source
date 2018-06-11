@@ -1,4 +1,4 @@
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 
 SET citus.task_executor_type TO 'task-tracker';
 SET citus.enable_unique_job_ids TO false;
@@ -14,25 +14,25 @@ INSERT INTO agg_test VALUES (1, 1, true, 99), (2, 2, false, 99), (2, 3, true, 88
 SELECT bool_or(flag) FROM agg_test;
 
 -- prevent coord from giving any tasks out
-SELECT citus.mitmproxy('flow.contains(b"task_tracker_assign_task").killall()');
+SELECT citus.mitmproxy('conn.contains(b"task_tracker_assign_task").killall()');
 
 -- the other worker is still here so we should get the right results
 SELECT bool_or(flag) FROM agg_test;
 
-SELECT citus.mitmproxy('flow.contains(b"task_tracker_task_status").killall()');
+SELECT citus.mitmproxy('conn.contains(b"task_tracker_task_status").killall()');
 SELECT bool_or(flag) FROM agg_test;
 
   -- kill it when the coord tries to pull results from the worker
-SELECT citus.mitmproxy('flow.contains(b"TO STDOUT WITH").killall()');
+SELECT citus.mitmproxy('conn.contains(b"TO STDOUT WITH").killall()');
 SELECT bool_or(flag) FROM agg_test;
 
 -- TODO: try failing the COPY after some data has been sent
 
-SELECT citus.mitmproxy('flow.contains(b"task_tracker_cleanup_job").killall()');
+SELECT citus.mitmproxy('conn.contains(b"task_tracker_cleanup_job").killall()');
 SELECT bool_or(flag) FROM agg_test;
 
 -- TODO: what if you fail the first task_tracker_task_status, but allow the second one?
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 DROP TABLE agg_test;
 
 SET citus.shard_replication_factor = 1;  -- workers contain disjoint subsets of the data
@@ -43,22 +43,22 @@ INSERT INTO agg_test VALUES (1, 1, true, 99), (2, 2, false, 99), (2, 3, true, 88
 
 -- for all of these the query should fail since we can't reach all of the shards it hits
 
-SELECT citus.mitmproxy('flow.contains(b"task_tracker_assign_task").killall()');
+SELECT citus.mitmproxy('conn.contains(b"task_tracker_assign_task").killall()');
 SELECT bool_or(flag) FROM agg_test;
 
-SELECT citus.mitmproxy('flow.contains(b"task_tracker_task_status").killall()');
+SELECT citus.mitmproxy('conn.contains(b"task_tracker_task_status").killall()');
 SELECT bool_or(flag) FROM agg_test;
 
-SELECT citus.mitmproxy('flow.contains(b"TO STDOUT WITH").killall()');
+SELECT citus.mitmproxy('conn.contains(b"TO STDOUT WITH").killall()');
 SELECT bool_or(flag) FROM agg_test;
 
-SELECT citus.mitmproxy('flow.contains(b"task_tracker_cleanup_job").killall()');
+SELECT citus.mitmproxy('conn.contains(b"task_tracker_cleanup_job").killall()');
 SELECT bool_or(flag) FROM agg_test;
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 DROP TABLE agg_test;
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 
 -- copied over from multi_outer_join.sql
 
@@ -102,31 +102,31 @@ SELECT
 FROM
 	multi_outer_join_left a LEFT JOIN multi_outer_join_right b ON (l_custkey = r_custkey);
 
-SELECT citus.mitmproxy('flow.contains(b"task_tracker_assign_task").killall()');
+SELECT citus.mitmproxy('conn.contains(b"task_tracker_assign_task").killall()');
 SELECT
 	min(l_custkey), max(l_custkey)
 FROM
 	multi_outer_join_left a LEFT JOIN multi_outer_join_right b ON (l_custkey = r_custkey);
 
-SELECT citus.mitmproxy('flow.contains(b"task_tracker_task_status").killall()');
+SELECT citus.mitmproxy('conn.contains(b"task_tracker_task_status").killall()');
 SELECT
 	min(l_custkey), max(l_custkey)
 FROM
 	multi_outer_join_left a LEFT JOIN multi_outer_join_right b ON (l_custkey = r_custkey);
 
-SELECT citus.mitmproxy('flow.contains(b"TO STDOUT WITH").killall()');
+SELECT citus.mitmproxy('conn.contains(b"TO STDOUT WITH").killall()');
 SELECT
 	min(l_custkey), max(l_custkey)
 FROM
 	multi_outer_join_left a LEFT JOIN multi_outer_join_right b ON (l_custkey = r_custkey);
 
-SELECT citus.mitmproxy('flow.contains(b"task_tracker_cleanup_job").killall()');
+SELECT citus.mitmproxy('conn.contains(b"task_tracker_cleanup_job").killall()');
 SELECT
 	min(l_custkey), max(l_custkey)
 FROM
 	multi_outer_join_left a LEFT JOIN multi_outer_join_right b ON (l_custkey = r_custkey);
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 DROP TABLE multi_outer_join_left;
 DROP TABLE multi_outer_join_right;
 
@@ -138,31 +138,31 @@ SELECT create_distributed_table('multi_outer_join_left', 'l_custkey');
 SELECT create_distributed_table('multi_outer_join_right', 'r_custkey');
 
 -- the other worker is reachable, so these should work
-SELECT citus.mitmproxy('flow.contains(b"task_tracker_assign_task").killall()');
+SELECT citus.mitmproxy('conn.contains(b"task_tracker_assign_task").killall()');
 SELECT
 	min(l_custkey), max(l_custkey)
 FROM
 	multi_outer_join_left a LEFT JOIN multi_outer_join_right b ON (l_custkey = r_custkey);
 
-SELECT citus.mitmproxy('flow.contains(b"task_tracker_task_status").killall()');
+SELECT citus.mitmproxy('conn.contains(b"task_tracker_task_status").killall()');
 SELECT
 	min(l_custkey), max(l_custkey)
 FROM
 	multi_outer_join_left a LEFT JOIN multi_outer_join_right b ON (l_custkey = r_custkey);
 
-SELECT citus.mitmproxy('flow.contains(b"TO STDOUT WITH").killall()');
+SELECT citus.mitmproxy('conn.contains(b"TO STDOUT WITH").killall()');
 SELECT
 	min(l_custkey), max(l_custkey)
 FROM
 	multi_outer_join_left a LEFT JOIN multi_outer_join_right b ON (l_custkey = r_custkey);
 
-SELECT citus.mitmproxy('flow.contains(b"task_tracker_cleanup_job").killall()');
+SELECT citus.mitmproxy('conn.contains(b"task_tracker_cleanup_job").killall()');
 SELECT
 	min(l_custkey), max(l_custkey)
 FROM
 	multi_outer_join_left a LEFT JOIN multi_outer_join_right b ON (l_custkey = r_custkey);
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 DROP TABLE multi_outer_join_left;
 DROP TABLE multi_outer_join_right;
 DROP FUNCTION create_tables();

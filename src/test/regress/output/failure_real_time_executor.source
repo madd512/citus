@@ -1,4 +1,4 @@
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -16,7 +16,7 @@ SELECT create_distributed_table('agg_test', 'id');
 
 INSERT INTO agg_test VALUES (1, 1, true, 99), (2, 2, false, 99), (2, 3, true, 88);
 -- block queries, but the other worker is still here, so we should get the right results
-SELECT citus.mitmproxy('flow.contains(b"bool_or").kill()');
+SELECT citus.mitmproxy('conn.contains(b"bool_or").kill()');
  mitmproxy 
 -----------
  
@@ -107,7 +107,7 @@ FROM
 (1 row)
 
 -- block the COPY
-SELECT citus.mitmproxy('flow.contains(b"multi_outer_join_left").kill()');
+SELECT citus.mitmproxy('conn.contains(b"multi_outer_join_left").kill()');
  mitmproxy 
 -----------
  
@@ -121,7 +121,7 @@ WARNING:  could not consume data from worker node
 WARNING:  could not consume data from worker node
 WARNING:  could not consume data from worker node
 ERROR:  failed to execute task 2
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -152,7 +152,7 @@ NOTICE:  Copying data from local table...
 (1 row)
 
 -- the other worker is reachable, so this should work
-SELECT citus.mitmproxy('flow.contains(b"multi_outer_join_left").kill()');
+SELECT citus.mitmproxy('conn.contains(b"multi_outer_join_left").kill()');
  mitmproxy 
 -----------
  
@@ -168,7 +168,7 @@ WARNING:  could not consume data from worker node
    1 |  20
 (1 row)
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  

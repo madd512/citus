@@ -7,7 +7,7 @@ SELECT create_distributed_table('append_tt2', 'id', 'append');
 
 -- prove that master_create_empty_shard is non-transactional, BEGIN is never sent
 -- (if it was then we would see an error here)
-SELECT citus.mitmproxy('flow.contains(b"BEGIN").kill()');
+SELECT citus.mitmproxy('conn.contains(b"BEGIN").kill()');
 BEGIN;
 SELECT master_create_empty_shard('append_tt2');
 SELECT master_create_empty_shard('append_tt2');
@@ -16,21 +16,21 @@ ROLLBACK;
 SELECT * FROM pg_dist_shard_placement;
 
 -- kill the connection on the first server response
-SELECT citus.mitmproxy('flow.matches(b"^R").kill()');
+SELECT citus.mitmproxy('conn.matches(b"^R").kill()');
 SELECT master_create_empty_shard('append_tt2');
   -- again, nothing was added to the metadata, this create failed!
 SELECT * FROM pg_dist_shard_placement;
 
 -- kill the connection when we send master_apply_shard_ddl_command
-SELECT citus.mitmproxy('flow.contains(b"CREATE TABLE").kill()');
+SELECT citus.mitmproxy('conn.contains(b"CREATE TABLE").kill()');
 SELECT master_create_empty_shard('append_tt2');
   -- again, nothing was added to the metadata, this create failed!
 SELECT * FROM pg_dist_shard_placement;
 
 -- kill the connection when we try to close it:
-SELECT citus.mitmproxy('flow.matches(b"^X").kill()');
+SELECT citus.mitmproxy('conn.matches(b"^X").kill()');
 SELECT master_create_empty_shard('append_tt2');
 SELECT * FROM pg_dist_shard_placement;
 
 DROP TABLE append_tt2;
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');

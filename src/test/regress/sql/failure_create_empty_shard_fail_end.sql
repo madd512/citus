@@ -7,11 +7,11 @@ SELECT create_distributed_table('append_tt2', 'id', 'append');
 SELECT * FROM pg_dist_shard_placement;
 
 -- kill the connection when we try to close it:
---SELECT citus.mitmproxy('flow.matches(b"^X").kill()');
+--SELECT citus.mitmproxy('conn.matches(b"^X").kill()');
 --SELECT master_create_empty_shard('append_tt2');
 --SELECT * FROM pg_dist_shard_placement;
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 INSERT INTO append_tt2 VALUES (1);
 SELECT * FROM append_tt2;
 
@@ -23,4 +23,4 @@ INSERT INTO append_tt2 VALUES (2);
 SELECT * FROM append_tt2;
 
 DROP TABLE append_tt2;
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');

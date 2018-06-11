@@ -10,7 +10,7 @@ SELECT * FROM pg_dist_shard_placement;
 SET citus.shard_replication_factor TO 1;
 
 -- reject all connections immediately
-SELECT citus.mitmproxy('flow.kill()');
+SELECT citus.mitmproxy('conn.kill()');
 
 -- the first one goes to the other worker, so this succeeds
 SELECT master_create_empty_shard('append_tt1');
@@ -23,11 +23,11 @@ SELECT master_create_empty_shard('append_tt1');
 
 -- if we fail the connection after it's been established Citus doesn't recover
 -- kill the connection when we send master_apply_shard_ddl_command
-SELECT citus.mitmproxy('flow.contains(b"CREATE TABLE").kill()');
+SELECT citus.mitmproxy('conn.contains(b"CREATE TABLE").kill()');
 SELECT master_create_empty_shard('append_tt1');
 
 SELECT * FROM pg_dist_shard;
 SELECT * FROM pg_dist_shard_placement;
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 DROP TABLE append_tt1;

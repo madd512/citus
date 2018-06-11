@@ -22,18 +22,18 @@ mitmdump --rawtcp -p 9702 --mode reverse:localhost:9700 -s fluent.py
 
 You need one more parameter at the end: --set slug='script'
 Where script can be of the form:
-- flow.contains(b"SELECT").contains(b"COPY").killall()
-- flow.matches(b"^Q").after(2).kill()
-- flow.copyOutResponse().kill()
+- conn.contains(b"SELECT").contains(b"COPY").killall()
+- conn.matches(b"^Q").after(2).kill()
+- conn.copyOutResponse().kill()
 
 Ideas (unimplemented):
-- flow.filter(shard=102457).kill()
+- conn.filter(shard=102457).kill()
 - packet.contains("SELECT").kill()
-- flow.shard("102456").contains("COPY").kill()
-- worker.once(and(flow.contains("COPY"),flow.contains("SELECT"))).partition()
+- conn.shard("102456").contains("COPY").kill()
+- worker.once(and(conn.contains("COPY"),conn.contains("SELECT"))).partition()
 - worker.after(packet.contains("COPY")).then(packet.contains("SELECT")).partition()
 - worker.after(query="COPY").and(query="SELECT").partition()
-- flow.after(query="COPY").then(query="SELECT").do(worker.partition())
+- conn.after(query="COPY").then(query="SELECT").do(worker.partition())
 
 Should probably rename killall() -> killworker()
 
@@ -105,11 +105,11 @@ class FilterableMixin:
         Methods such as .onQuery trigger when a packet with that name is intercepted
 
         Adds support for commands such as:
-          flow.onQuery(query="COPY")
+          conn.onQuery(query="COPY")
 
         Returns a function because the above command is resolved in two steps:
-          flow.onQuery becomes flow.__getattr__("onQuery")
-          flow.onQuery(query="COPY") becomes flow.__getattr__("onQuery")(query="COPY")
+          conn.onQuery becomes conn.__getattr__("onQuery")
+          conn.onQuery(query="COPY") becomes conn.__getattr__("onQuery")(query="COPY")
         '''
         if attr.startswith('on'):
             def doit(**kwargs):
@@ -274,7 +274,7 @@ def build_handler(spec):
     print("spec: ", spec)
     root = RootHandler()
     recorder = RecorderCommand()
-    handler = eval(spec, {'__builtins__': {}}, {'flow': root, 'recorder': recorder})
+    handler = eval(spec, {'__builtins__': {}}, {'conn': root, 'recorder': recorder})
     return handler.root
 
 def print_message(tcp_msg):
@@ -378,7 +378,7 @@ def replace_thread(fifoname):
 # callbacks for mitmproxy
 
 def load(loader):
-    loader.add_option('slug', str, 'flow.allow()', "A script to run")
+    loader.add_option('slug', str, 'conn.allow()', "A script to run")
     loader.add_option('fifo', str, '', "Which fifo to listen on for commands")
 
 

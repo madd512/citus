@@ -1,4 +1,4 @@
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -22,7 +22,7 @@ SELECT bool_or(flag) FROM agg_test WHERE id = 3;
 (1 row)
 
 -- block queries. the other worker still exists though, so this should still work
-SELECT citus.mitmproxy('flow.contains(b"bool_or").kill()');
+SELECT citus.mitmproxy('conn.contains(b"bool_or").kill()');
  mitmproxy 
 -----------
  
@@ -38,7 +38,7 @@ CONTEXT:  while executing command on localhost:57640
  t
 (1 row)
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  
@@ -66,14 +66,14 @@ SELECT bool_or(flag) FROM agg_test WHERE id = 2;
  t
 (1 row)
 
-SELECT count(1) FROM citus.mitmproxy('recorder.dump()'); -- a query was sent to the worker
+SELECT count(1) FROM citus.dump_network_traffic(); -- a query was sent to the worker
  count 
 -------
-     3
+     2
 (1 row)
 
   -- the query should fail, since we can't reach all the data it wants to hit
-SELECT citus.mitmproxy('flow.contains(b"bool_or").kill()');
+SELECT citus.mitmproxy('conn.contains(b"bool_or").kill()');
  mitmproxy 
 -----------
  
@@ -85,13 +85,13 @@ WARNING:  server closed the connection unexpectedly
 	before or while processing the request.
 CONTEXT:  while executing command on localhost:57640
 ERROR:  could not receive query results
-SELECT count(1) FROM citus.mitmproxy('recorder.dump()'); -- a response was blocked
+SELECT count(1) FROM citus.dump_network_traffic(); -- a response was blocked
  count 
 -------
-     2
+     1
 (1 row)
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
  mitmproxy 
 -----------
  

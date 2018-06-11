@@ -5,26 +5,26 @@ BEGIN;
 UPDATE test SET b = 2 WHERE a = 2;
 ROLLBACK;
 
-SELECT citus.mitmproxy('flow.contains(b"UPDATE").kill()');
+SELECT citus.mitmproxy('conn.contains(b"UPDATE").kill()');
 
 BEGIN;
 UPDATE test SET b = 2 WHERE a = 2;
 ROLLBACK;
 
-SELECT citus.mitmproxy('flow.contains(b"BEGIN").kill()');
+SELECT citus.mitmproxy('conn.contains(b"BEGIN").kill()');
 
 BEGIN;
 UPDATE test SET b = 2 WHERE a = 2;
 ROLLBACK;
 
 SET citus.multi_shard_commit_protocol = '2pc';
-SELECT citus.mitmproxy('flow.contains(b"COMMIT").kill()');
+SELECT citus.mitmproxy('conn.contains(b"COMMIT").kill()');
 
 BEGIN;
 UPDATE test SET b = 2 WHERE a = 2;
 COMMIT;
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 
 SET citus.multi_shard_commit_protocol = '2pc';
 

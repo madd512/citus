@@ -1,4 +1,4 @@
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 
 SET citus.shard_count = 1;
 SET citus.shard_replication_factor = 2; -- one shard per worker
@@ -16,42 +16,42 @@ SELECT count(1) FROM copy_test;
 SHOW citus.shard_replication_factor;
 
 ---- kill the connection when we try to create the shard ----
-SELECT citus.mitmproxy('flow.contains(b"worker_apply_shard_ddl_command").kill()');
+SELECT citus.mitmproxy('conn.contains(b"worker_apply_shard_ddl_command").kill()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT * FROM pg_dist_shard s, pg_dist_shard_placement p
   WHERE (s.shardid = p.shardid) AND s.logicalrelid = 'copy_test'::regclass;
 SELECT count(1) FROM copy_test;
 
 ---- kill the connection when we try to start a transaction ----
-SELECT citus.mitmproxy('flow.contains(b"assign_distributed_transaction_id").kill()');
+SELECT citus.mitmproxy('conn.contains(b"assign_distributed_transaction_id").kill()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT * FROM pg_dist_shard s, pg_dist_shard_placement p
   WHERE (s.shardid = p.shardid) AND s.logicalrelid = 'copy_test'::regclass;
 SELECT count(1) FROM copy_test;
 
 ---- kill the connection when we start the COPY ----
-SELECT citus.mitmproxy('flow.contains(b"FROM STDIN WITH").kill()');
+SELECT citus.mitmproxy('conn.contains(b"FROM STDIN WITH").kill()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT * FROM pg_dist_shard s, pg_dist_shard_placement p
   WHERE (s.shardid = p.shardid) AND s.logicalrelid = 'copy_test'::regclass;
 SELECT count(1) FROM copy_test;
 
 ---- kill the connection when we send the data ----
-SELECT citus.mitmproxy('flow.contains(b"PGCOPY").kill()');
+SELECT citus.mitmproxy('conn.contains(b"PGCOPY").kill()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT * FROM pg_dist_shard s, pg_dist_shard_placement p
   WHERE (s.shardid = p.shardid) AND s.logicalrelid = 'copy_test'::regclass;
 SELECT count(1) FROM copy_test;
 
 ---- cancel the connection when we send the data ----
-SELECT citus.mitmproxy(format('flow.contains(b"PGCOPY").cancel(%s)', pg_backend_pid()));
+SELECT citus.mitmproxy(format('conn.contains(b"PGCOPY").cancel(%s)', pg_backend_pid()));
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT * FROM pg_dist_shard s, pg_dist_shard_placement p
   WHERE (s.shardid = p.shardid) AND s.logicalrelid = 'copy_test'::regclass;
 SELECT count(1) FROM copy_test;
 
 ---- kill the connection when we try to get the size of the table ----
-SELECT citus.mitmproxy('flow.contains(b"pg_table_size").kill()');
+SELECT citus.mitmproxy('conn.contains(b"pg_table_size").kill()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT * FROM pg_dist_shard s, pg_dist_shard_placement p
   WHERE (s.shardid = p.shardid) AND s.logicalrelid = 'copy_test'::regclass;
@@ -62,14 +62,14 @@ SELECT count(1) FROM copy_test;
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 
 ---- kill the connection when we try to get the min, max of the table ----
-SELECT citus.mitmproxy('flow.contains(b"SELECT min(key), max(key)").kill()');
+SELECT citus.mitmproxy('conn.contains(b"SELECT min(key), max(key)").kill()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT * FROM pg_dist_shard s, pg_dist_shard_placement p
   WHERE (s.shardid = p.shardid) AND s.logicalrelid = 'copy_test'::regclass;
 SELECT count(1) FROM copy_test;
 
 ---- kill the connection when we try to COMMIT ----
-SELECT citus.mitmproxy('flow.matches(b"^Q\x00\x00\x00\x0bCOMMIT\x00").kill()');
+SELECT citus.mitmproxy('conn.matches(b"^Q\x00\x00\x00\x0bCOMMIT\x00").kill()');
 COPY copy_test FROM PROGRAM 'echo 0, 0 && echo 1, 1 && echo 2, 4 && echo 3, 9' WITH CSV;
 SELECT * FROM pg_dist_shard s, pg_dist_shard_placement p
   WHERE (s.shardid = p.shardid) AND s.logicalrelid = 'copy_test'::regclass;
@@ -77,5 +77,5 @@ SELECT count(1) FROM copy_test;
 
 -- ==== Clean up, we're done here ====
 
-SELECT citus.mitmproxy('flow.allow()');
+SELECT citus.mitmproxy('conn.allow()');
 DROP TABLE copy_test;
