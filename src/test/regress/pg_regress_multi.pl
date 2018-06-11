@@ -545,7 +545,7 @@ if ($useMitmproxy)
   $mitmPid = $childPid;
 
   if ($mitmPid eq 0) {
-    exec("mitmdump --rawtcp -p 57640 --mode reverse:localhost:57638 -s mitmscripts/fluent.py --set fifo=$mitmFifoPath");
+    exec("mitmdump --rawtcp -p 57640 --mode reverse:localhost:57638 -s mitmscripts/fluent.py --set fifo=$mitmFifoPath --set flow_detail=0 --set termlog_verbosity=warn");
     die 'could not start mitmdump';
   }
 }
