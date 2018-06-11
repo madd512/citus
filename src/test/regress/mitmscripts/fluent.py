@@ -311,6 +311,10 @@ def listen_for_commands(fifoname):
 
         pretty = structs.print(message.parsed)
 
+        # hack to debug travis
+        if pretty is '[]':
+            pretty = message.content
+
         return emit_row(message.connection_id, message.from_client, pretty)
 
     def handle_recorder(recorder):
