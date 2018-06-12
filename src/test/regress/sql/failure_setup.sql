@@ -1,9 +1,3 @@
--- disable the maintenance daemon, prevent it from making any connections
-ALTER SYSTEM SET citus.distributed_deadlock_detection_factor TO -1;
-ALTER SYSTEM SET citus.recover_2pc_interval TO -1;
-ALTER SYSTEM set citus.enable_statistics_collection TO false;
-SELECT pg_reload_conf();
-
 SELECT citus.mitmproxy('conn.allow()');
 
 -- add the workers

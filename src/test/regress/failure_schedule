@@ -1,7 +1,10 @@
-# get everything ready for failure testing
+# import this file (from psql you can use \i) to use mitmproxy manually
 test: failure_test_helpers
+
+# this should only be run by pg_regress_multi, you don't need it
 test: failure_setup
 
+# now that we're setup run the tests!
 test: failure_testing
 test: failure_create_empty_shard_rep_factor_1
 test: failure_create_empty_shard

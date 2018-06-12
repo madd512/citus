@@ -1,3 +1,13 @@
+-- By default Citus makes lots of connections in the background which fill up the log
+-- By tweaking these settings you can make sure you only capture packets related to what
+--   you're doing
+ALTER SYSTEM SET citus.distributed_deadlock_detection_factor TO -1;
+ALTER SYSTEM SET citus.recover_2pc_interval TO -1;
+ALTER SYSTEM set citus.enable_statistics_collection TO false;
+SELECT pg_reload_conf();
+
+-- Add some helper functions for sending commands to mitmproxy
+
 CREATE FUNCTION citus.mitmproxy(text) RETURNS TABLE(result text) AS $$
 DECLARE
   command ALIAS FOR $1;
