@@ -18,44 +18,74 @@ import structs
 '''
 Use with a command line like this:
 
-mitmdump --rawtcp -p 9702 --mode reverse:localhost:9700 -s fluent.py
+> mitmdump --rawtcp -p 9702 --mode reverse:localhost:9700 -s fluent.py
+     --set fifo=/tmp/mitm.fifo
 
-You need one more parameter at the end: --set slug='script'
-Where script can be of the form:
-- conn.contains(b"SELECT").contains(b"COPY").killall()
-- conn.matches(b"^Q").after(2).kill()
-- conn.copyOutResponse().kill()
+Where `9702` is the port you want this proxy to listen for connections on, and `9700` is
+the port you want this proxy to forward connections to. Once started, this proxy will wait
+for commands sent over the fifo. Here are some commands which are supported:
 
-Ideas (unimplemented):
-- conn.filter(shard=102457).kill()
-- packet.contains("SELECT").kill()
-- conn.shard("102456").contains("COPY").kill()
-- worker.once(and(conn.contains("COPY"),conn.contains("SELECT"))).partition()
-- worker.after(packet.contains("COPY")).then(packet.contains("SELECT")).partition()
-- worker.after(query="COPY").and(query="SELECT").partition()
-- conn.after(query="COPY").then(query="SELECT").do(worker.partition())
+conn.allow() - the default, allows all connections
+conn.kill()  - kills all connections immediately after the first packet is sent
 
-Should probably rename killall() -> killworker()
+conn.onQuery().kill() - kill a connection once a "Query" packet is seen (The list of
+                        supported packets can be found in ./structs.py)
 
-Instead of having _handle and _accept, you should separate out the builders from the
-handlers? The builders just configure a handler which is then passed to mitmproxy
+conn.matches(b"^Q").kill() - This looks at the raw bytes of the packet, any packet
+                             starting with "Q" kills the connection (this is identical to
+                             the above command)
 
-What about: wait until .copyOutResponse(), then kill after 5 of any message have passed
+conn.onQuery(query="COMMIT").kill() - you can look into the actual query which is sent and
+                                      match on its contents (this is always a regex)
+conn.onQuery(query="^COMMIT").kill() - the query must start with COMMIT
+conn.onQuery(query="pg_table_size\(") - you must escape parens, since you're in a regex
+
+conn.after(2).kill() - Kills a connection after the third packet has been sent down it
+
+These filters can also be abrbitrarily chained:
+
+conn.matches(b"^Q").after(2).kill() - kill any connection when the third Query is sent
+
+N.B. These commands work on a per-connection basis. Meaning, each connection is tracked
+individually, and a command such as `conn.onQuery().kill()` will only kill the connection
+on which the Query packet was seen, and a command such as `conn.onQuery().after(2).kill()`
+will never trigger if each Query is sent on a different connection, even if you send
+dozens of Query packets.
+
+There's one exception:
+
+conn.onQuery(query="^COMMIT").killall() - the killall() command kills this and all
+                                          subsequent connections. Any packets sent once it
+                                          triggers will have their connections killed.
+
+There are also some special commands. This proxy also records every packet and lets you
+inspect them:
+
+recorder.dump() - emits a list of captured packets in COPY text format
+recorder.reset() - empties the data structure containing the captured packets
+
+Both of those calls empty the structure containing the packets, a call to dump() will only
+return the packets which were captured since the last call to .dump() or reset()
 '''
+
+# I. Command Strings
 
 class Stop(Exception):
     pass
 
 class Handler:
     '''
-    You want to pull from the previous step?
-    When given a message, pass it up to your parent and see what they do with it?
+    This class hierarchy serves two purposes:
+    1. Allow command strings to be evaluated. Once evaluated you'll have a Handler you can
+       pass packets to
+    2. Process packets as they come in and decide what to do with them.
 
-    Alternatively, keep track of which node was the root node, then give it the message
-    and wait for it to push the message back down to us?
+    Subclasses which want to change how packets are handled should override _handle.
     '''
     def __init__(self, root=None):
+        # all packets are first sent to the root handler to be processed
         self.root = root if root else self
+        # all handlers keep track of the next handler so they know where to send packets
         self.next = None
 
     def _accept(self, flow, message):
@@ -77,11 +107,19 @@ class Handler:
             # stop processing this packet, move on to the next one
             return
         elif result == 'stop':
-            # kill all connectinos from here on out
+            # from now on kill all connections
             raise Stop()
 
     def _handle(self, flow, message):
-        return 'pass'
+        '''
+        Handlers can return one of three things:
+        - "done" tells the parent to stop processing. This performs the default action,
+          which is to allow the packet to be sent.
+        - "pass" means to delegate to self.next and do whatever it wants
+        - "stop" means all processing will stop, and all connections will be killed
+        '''
+        # subclasses must implement this
+        raise NotImplementedError()
 
 class FilterableMixin:
     def contains(self, pattern):
@@ -94,10 +132,6 @@ class FilterableMixin:
 
     def after(self, times):
         self.next = After(self.root, times)
-        return self.next
-
-    def copyOutResponse(self):
-        self.next = Matches(self.root, b"^H")
         return self.next
 
     def __getattr__(self, attr):
@@ -248,7 +282,9 @@ class OnPacket(Handler, ActionsMixin, FilterableMixin):
         return 'done'
 
 class RootHandler(Handler, ActionsMixin, FilterableMixin):
-    pass
+    def _handle(self, flow, message):
+        # do whatever the next Handler tells us to do
+        return 'pass'
 
 class RecorderCommand:
     def __init__(self):
@@ -267,32 +303,23 @@ class RecorderCommand:
         self.command = 'reset'
         return self
 
-# helper functions
+# II. Utilities for interfacing with mitmproxy
 
 def build_handler(spec):
+    'Turns a command string into a RootHandler ready to accept packets'
     root = RootHandler()
     recorder = RecorderCommand()
     handler = eval(spec, {'__builtins__': {}}, {'conn': root, 'recorder': recorder})
     return handler.root
 
-def print_message(tcp_msg):
-    print("[message] from {} to {}:\r\n{}".format(
-        "client" if tcp_msg.from_client else "server",
-        "server" if tcp_msg.from_client else "client",
-        strutils.bytes_to_escaped_str(tcp_msg.content),
-        tcp_msg.content.hex(),
-    ))
-    if tcp_msg.parsed:
-        print(structs.print(tcp_msg.parsed))
+# a bunch of globals
 
-# thread which listens for commands
-
-handler = None
-command_thread = None
-command_queue = queue.Queue()
-response_queue = queue.Queue()
-captured_messages = queue.Queue()
-connection_count = 0
+handler = None  # the current handler used to process packets
+command_thread = None  # sits on the fifo and waits for new commands to come in
+command_queue = queue.Queue()  # we poll this from the main thread and apply commands
+response_queue = queue.Queue()  # the main thread uses this to reply to command_thread
+captured_messages = queue.Queue()  # where we store messages used for recorder.dump()
+connection_count = 0  # so we can give connections ids in recorder.dump()
 
 def listen_for_commands(fifoname):
 
@@ -372,7 +399,7 @@ def replace_thread(fifoname):
     command_thread = threading.Thread(target=listen_for_commands, args=(fifoname,), daemon=True)
     command_thread.start()
 
-# callbacks for mitmproxy
+# III. mitmproxy callbacks
 
 def load(loader):
     loader.add_option('slug', str, 'conn.allow()', "A script to run")
@@ -380,8 +407,8 @@ def load(loader):
 
 
 def tick():
-    # we do this dance because ctx isn't threadsafe, it is only set while a handler is
-    # being called.
+    # we do this crazy dance because ctx isn't threadsafe, it is only useable while a
+    # callback (such as this one) is being called.
     try:
         slug = command_queue.get_nowait()
     except queue.Empty:
