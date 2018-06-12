@@ -21,11 +21,337 @@
 #include "distributed/foreign_constraint.h"
 #include "distributed/master_protocol.h"
 #include "distributed/multi_join_order.h"
+#include "nodes/pg_list.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/ruleutils.h"
 #include "utils/syscache.h"
+
+
+typedef struct FRelNodeId
+{
+	Oid relationId;
+}FRelNodeId;
+
+
+typedef struct FRelNode
+{
+	FRelNodeId relationId;
+	uint32 index;
+	List *adjacencyList;
+}FRelNode;
+
+
+static void SetFRelNodeParameters(FRelGraph *frelGraph, FRelNode *frelNode,
+								  uint32 *currentIndex, Oid relationId);
+static void ClosureUtil(FRelGraph *frelGraph, uint32 sourceId, uint32 vertexId);
+static void CreateTransitiveClosure(FRelGraph *frelGraph);
+
+
+/*
+ * CreateForeignKeyRelationGraph creates the foreign key relation graph using
+ * foreign constraint provided by pg_constraint metadata table.
+ */
+FRelGraph *
+CreateForeignKeyRelationGraph()
+{
+	SysScanDesc fkeyScan;
+	HeapTuple tuple;
+	HASHCTL info;
+	uint32 hashFlags = 0;
+	Relation fkeyRel;
+	FRelGraph *frelGraph = (FRelGraph *) palloc(sizeof(FRelGraph));
+	uint32 curIndex = 0;
+
+	/* create (oid) -> [FRelNode] hash */
+	memset(&info, 0, sizeof(info));
+	info.keysize = sizeof(FRelNodeId);
+	info.entrysize = sizeof(FRelNode);
+	info.hash = oid_hash;
+	info.hcxt = CurrentMemoryContext;
+	hashFlags = (HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+
+	frelGraph->nodeMap = hash_create("foreign key relation map (oid)",
+									 64 * 32, &info, hashFlags);
+
+	fkeyRel = heap_open(ConstraintRelationId, AccessShareLock);
+	fkeyScan = systable_beginscan(fkeyRel, ConstraintRelidIndexId, true,
+								  NULL, 0, NULL);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(fkeyScan)))
+	{
+		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(tuple);
+		bool referringFound = false;
+		bool referredFound = false;
+		FRelNode *referringNode = NULL;
+		FRelNode *referredNode = NULL;
+		FRelNodeId *referringNodeId = NULL;
+		FRelNodeId *referredNodeId = NULL;
+
+		/* Not a foreign key */
+		if (con->contype != CONSTRAINT_FOREIGN)
+		{
+			continue;
+		}
+
+		referringNodeId = (FRelNodeId *) palloc(sizeof(FRelNodeId));
+		referredNodeId = (FRelNodeId *) palloc(sizeof(FRelNodeId));
+		referringNodeId->relationId = con->conrelid;
+		referredNodeId->relationId = con->confrelid;
+
+		referringNode = (FRelNode *) hash_search(frelGraph->nodeMap, referringNodeId,
+												 HASH_ENTER, &referringFound);
+		referredNode = (FRelNode *) hash_search(frelGraph->nodeMap, referredNodeId,
+												HASH_ENTER, &referredFound);
+
+		/*
+		 * If we found a node in the graph we only need to add referred node to
+		 * the adjacency  list of that node.
+		 */
+		if (referringFound)
+		{
+			/*
+			 * If referred node is already in the adjacency list of referred node, do nothing.
+			 */
+			if (referringNode->adjacencyList == NIL || !list_member(
+					referringNode->adjacencyList, referredNode))
+			{
+				/*
+				 * If referred node also exists, add it to the adjacency list
+				 * and continue.
+				 */
+				if (referredFound)
+				{
+					referringNode->adjacencyList = lappend(referringNode->adjacencyList,
+														   referredNode);
+				}
+				else
+				{
+					/*
+					 * We need to create the node and also add the relationId to
+					 * index to oid mapping. Then, add it to the adjacency list
+					 * of referring node.
+					 */
+					SetFRelNodeParameters(frelGraph, referredNode, &curIndex,
+										  con->confrelid);
+					referringNode->adjacencyList = lappend(referringNode->adjacencyList,
+														   referredNode);
+				}
+			}
+			else
+			{
+				continue;
+			}
+		}
+		else
+		{
+			/*
+			 * If referring node is not exist in the graph, set its remaining parameters.
+			 */
+			SetFRelNodeParameters(frelGraph, referringNode, &curIndex, con->conrelid);
+
+			if (referredFound)
+			{
+				referringNode->adjacencyList = lappend(referringNode->adjacencyList,
+													   referredNode);
+			}
+			else
+			{
+				SetFRelNodeParameters(frelGraph, referredNode, &curIndex, con->confrelid);
+				referringNode->adjacencyList = lappend(referringNode->adjacencyList,
+													   referredNode);
+			}
+		}
+	}
+
+	/* initialize transitivity matrix */
+	frelGraph->nodeCount = curIndex;
+	frelGraph->transitivityMatrix = (bool **) palloc(frelGraph->nodeCount *
+													 sizeof(bool *));
+
+	curIndex = 0;
+	while (curIndex < frelGraph->nodeCount)
+	{
+		frelGraph->transitivityMatrix[curIndex] = (bool *) palloc(frelGraph->nodeCount *
+																  sizeof(bool));
+		memset(frelGraph->transitivityMatrix[curIndex], false, frelGraph->nodeCount *
+			   sizeof(bool));
+		curIndex += 1;
+	}
+
+	/*
+	 * Transitivity matrix will be used to find affected and affecting relations
+	 * for foreign key relation graph.
+	 */
+	CreateTransitiveClosure(frelGraph);
+
+	systable_endscan(fkeyScan);
+	heap_close(fkeyRel, AccessShareLock);
+
+	return frelGraph;
+}
+
+
+/*
+ * SetFRelNodeParameters sets the parameters of given node to make it usable
+ * for FRelGraph.
+ */
+static void
+SetFRelNodeParameters(FRelGraph *frelGraph, FRelNode *frelNode, uint32 *currentIndex, Oid
+					  relationId)
+{
+	frelNode->adjacencyList = NIL;
+	frelNode->index = *currentIndex;
+
+	if (*currentIndex == 0)
+	{
+		frelGraph->indexToOid = palloc(sizeof(uint32));
+	}
+	else
+	{
+		frelGraph->indexToOid = repalloc(frelGraph->indexToOid, (*currentIndex + 1) *
+										 sizeof(uint32));
+	}
+
+	frelGraph->indexToOid[*currentIndex] = relationId;
+	*currentIndex += 1;
+}
+
+
+/*
+ * CreateTransitiveClosure creates the transitive closure matrix for the given
+ * graph.
+ */
+static void
+CreateTransitiveClosure(FRelGraph *frelGraph)
+{
+	uint32 tableCounter = 0;
+
+	while (tableCounter < frelGraph->nodeCount)
+	{
+		ClosureUtil(frelGraph, tableCounter, tableCounter);
+		tableCounter += 1;
+	}
+
+	/*
+	 * Print it in the debug mode.
+	 */
+	tableCounter = 0;
+	while (tableCounter < frelGraph->nodeCount)
+	{
+		int innerTableCounter = 0;
+		while (innerTableCounter < frelGraph->nodeCount)
+		{
+			if (frelGraph->transitivityMatrix[tableCounter][innerTableCounter])
+			{
+				Oid firstRelationId = frelGraph->indexToOid[tableCounter];
+				Oid secondRelationId = frelGraph->indexToOid[innerTableCounter];
+
+				elog(DEBUG1, "Path from relation %d to relation %d", firstRelationId,
+					 secondRelationId);
+			}
+			innerTableCounter += 1;
+		}
+		tableCounter += 1;
+	}
+}
+
+
+/*
+ * ClosureUtil is a utility function for recursively filling transitivity vector
+ * for a given source id.
+ */
+static void
+ClosureUtil(FRelGraph *frelGraph, uint32 sourceId, uint32 vertexId)
+{
+	FRelNodeId *currentNodeId = (FRelNodeId *) palloc(sizeof(FRelNodeId));
+	FRelNode *referringNode = NULL;
+	bool isFound = false;
+	List *adjacencyList = NIL;
+	ListCell *nodeCell = NULL;
+
+	/* There is a path from node to itself */
+	frelGraph->transitivityMatrix[sourceId][vertexId] = true;
+	currentNodeId->relationId = frelGraph->indexToOid[vertexId];
+
+	referringNode = (FRelNode *) hash_search(frelGraph->nodeMap, currentNodeId, HASH_FIND,
+											 &isFound);
+	Assert(isFound);
+
+	adjacencyList = referringNode->adjacencyList;
+
+	foreach(nodeCell, adjacencyList)
+	{
+		FRelNode *currentNeighbourNode = (FRelNode *) lfirst(nodeCell);
+		uint32 currentNeighbourIndex = currentNeighbourNode->index;
+
+		if (frelGraph->transitivityMatrix[sourceId][currentNeighbourIndex] == false)
+		{
+			ClosureUtil(frelGraph, sourceId, currentNeighbourIndex);
+		}
+	}
+}
+
+
+/*
+ * GetForeignKeyRelation returns the list of oids affected or affecting given
+ * relation id.
+ */
+List *
+GetForeignKeyRelation(FRelGraph *frelGraph, Oid relationId, bool isAffecting)
+{
+	List *foreignKeyList = NIL;
+	bool isFound = false;
+	FRelNodeId *relationNodeId = (FRelNodeId *) palloc(sizeof(FRelNodeId));
+	FRelNode *relationNode = NULL;
+	uint32 relationIndex = -1;
+	relationNodeId->relationId = relationId;
+
+	relationNode = (FRelNode *) hash_search(frelGraph->nodeMap, relationNodeId,
+											HASH_ENTER, &isFound);
+
+	if (!isFound)
+	{
+		return NIL;
+	}
+	else
+	{
+		relationIndex = relationNode->index;
+		if (isAffecting)
+		{
+			uint32 tableCounter = 0;
+
+			while (tableCounter < frelGraph->nodeCount)
+			{
+				if (frelGraph->transitivityMatrix[relationIndex][tableCounter])
+				{
+					Oid referredTableOid = frelGraph->indexToOid[tableCounter];
+					foreignKeyList = lappend_oid(foreignKeyList, referredTableOid);
+				}
+
+				tableCounter += 1;
+			}
+		}
+		else
+		{
+			uint32 tableCounter = 0;
+
+			while (tableCounter < frelGraph->nodeCount)
+			{
+				if (frelGraph->transitivityMatrix[tableCounter][relationIndex])
+				{
+					Oid referringTableOid = frelGraph->indexToOid[tableCounter];
+					foreignKeyList = lappend_oid(foreignKeyList, referringTableOid);
+				}
+
+				tableCounter += 1;
+			}
+		}
+	}
+
+	return foreignKeyList;
+}
 
 
 /*
