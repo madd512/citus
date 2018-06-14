@@ -66,6 +66,7 @@
 #include "distributed/multi_physical_planner.h"
 #include "distributed/multi_shard_transaction.h"
 #include "distributed/placement_connection.h"
+#include "distributed/relation_access_tracking.h"
 #include "distributed/remote_commands.h"
 #include "distributed/remote_transaction.h"
 #include "distributed/resource_lock.h"
@@ -2376,6 +2377,15 @@ CitusCopyDestReceiverShutdown(DestReceiver *destReceiver)
 
 		/* close the COPY input on all shard placements */
 		EndRemoteCopy(shardConnections->shardId, shardConnections->connectionList, true);
+	}
+
+
+	/* when we see multiple shard connections, we mark COPY as parallel modify */
+	if (list_length(shardConnectionsList) > 1)
+	{
+		Oid relationId = RelationGetRelid(distributedRelation);
+
+		RecordParallelModifyAccess(relationId);
 	}
 
 	heap_close(distributedRelation, NoLock);
