@@ -27,6 +27,7 @@
 #include "utils/relcache.h"
 #include "utils/ruleutils.h"
 #include "utils/syscache.h"
+#include "utils/lsyscache.h"
 
 
 typedef struct FRelNodeId
@@ -48,6 +49,38 @@ static void SetFRelNodeParameters(FRelGraph *frelGraph, FRelNode *frelNode,
 static void ClosureUtil(FRelGraph *frelGraph, uint32 sourceId, uint32 vertexId);
 static void CreateTransitiveClosure(FRelGraph *frelGraph);
 
+/* this function is only exported in the regression tests */
+PG_FUNCTION_INFO_V1(get_foreign_key_relation);
+
+/*
+ * get_foreign_key_relation returns the list of table oids that is referenced
+ * by given oid recursively.
+ */
+Datum
+get_foreign_key_relation(PG_FUNCTION_ARGS)
+{
+	Oid relationId = PG_GETARG_OID(0);
+	bool isReferencing = PG_GETARG_BOOL(1);
+	FRelGraph *frelGraph = CreateForeignKeyRelationGraph();
+	List *refList = GetForeignKeyRelation(frelGraph, relationId, isReferencing);
+	ListCell *nodeCell = NULL;
+
+	foreach(nodeCell, refList)
+	{
+		Oid refOid = (Oid) lfirst_oid(nodeCell);
+
+		if (isReferencing)
+		{
+			elog(LOG, "Path from relation %s to relation %s", get_rel_name(relationId), get_rel_name(refOid));
+		}
+		else
+		{
+			elog(LOG, "Path from relation %s to relation %s", get_rel_name(refOid), get_rel_name(relationId));
+		}
+	}
+
+	PG_RETURN_VOID();
+}
 
 /*
  * CreateForeignKeyRelationGraph creates the foreign key relation graph using
@@ -248,8 +281,8 @@ CreateTransitiveClosure(FRelGraph *frelGraph)
 				Oid firstRelationId = frelGraph->indexToOid[tableCounter];
 				Oid secondRelationId = frelGraph->indexToOid[innerTableCounter];
 
-				elog(DEBUG1, "Path from relation %d to relation %d", firstRelationId,
-					 secondRelationId);
+				elog(DEBUG1, "Path from relation %s to relation %s", get_rel_name(firstRelationId),
+					 get_rel_name(secondRelationId));
 			}
 			innerTableCounter += 1;
 		}
@@ -271,10 +304,7 @@ ClosureUtil(FRelGraph *frelGraph, uint32 sourceId, uint32 vertexId)
 	List *adjacencyList = NIL;
 	ListCell *nodeCell = NULL;
 
-	/* There is a path from node to itself */
-	frelGraph->transitivityMatrix[sourceId][vertexId] = true;
 	currentNodeId->relationId = frelGraph->indexToOid[vertexId];
-
 	referringNode = (FRelNode *) hash_search(frelGraph->nodeMap, currentNodeId, HASH_FIND,
 											 &isFound);
 	Assert(isFound);
@@ -288,6 +318,7 @@ ClosureUtil(FRelGraph *frelGraph, uint32 sourceId, uint32 vertexId)
 
 		if (frelGraph->transitivityMatrix[sourceId][currentNeighbourIndex] == false)
 		{
+			frelGraph->transitivityMatrix[sourceId][currentNeighbourIndex] = true;
 			ClosureUtil(frelGraph, sourceId, currentNeighbourIndex);
 		}
 	}
