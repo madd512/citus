@@ -2,7 +2,7 @@ SET citus.next_shard_id TO 3000000;
 SET client_min_messages TO LOG;
 SET citus.shard_replication_factor TO 1;
 CREATE FUNCTION get_foreign_key_relation(Oid, bool)
-    RETURNS void
+    RETURNS SETOF Oid
     LANGUAGE C STABLE STRICT
     AS 'citus', $$get_foreign_key_relation$$;
 -- Complex case with non-distributed tables
@@ -14,64 +14,6 @@ CREATE TABLE tt5(id int PRIMARY KEY);
 CREATE TABLE tt6(id int PRIMARY KEY);
 CREATE TABLE tt7(id int PRIMARY KEY, value_1 int REFERENCES tt6(id));
 CREATE TABLE tt8(id int PRIMARY KEY, value_1 int REFERENCES tt6(id), value_2 int REFERENCES tt7(id));
-SELECT get_foreign_key_relation('tt1'::regclass, TRUE);
- get_foreign_key_relation 
---------------------------
- 
-(1 row)
-
-SELECT get_foreign_key_relation('tt2'::regclass, TRUE);
-LOG:  Path from relation tt2 to relation tt4
-LOG:  Path from relation tt2 to relation tt1
- get_foreign_key_relation 
---------------------------
- 
-(1 row)
-
-SELECT get_foreign_key_relation('tt3'::regclass, TRUE);
-LOG:  Path from relation tt3 to relation tt4
-LOG:  Path from relation tt3 to relation tt2
-LOG:  Path from relation tt3 to relation tt1
-LOG:  Path from relation tt3 to relation tt3
- get_foreign_key_relation 
---------------------------
- 
-(1 row)
-
-SELECT get_foreign_key_relation('tt4'::regclass, TRUE);
-LOG:  Path from relation tt4 to relation tt4
- get_foreign_key_relation 
---------------------------
- 
-(1 row)
-
-SELECT get_foreign_key_relation('tt5'::regclass, TRUE);
- get_foreign_key_relation 
---------------------------
- 
-(1 row)
-
-SELECT get_foreign_key_relation('tt6'::regclass, TRUE);
- get_foreign_key_relation 
---------------------------
- 
-(1 row)
-
-SELECT get_foreign_key_relation('tt7'::regclass, TRUE);
-LOG:  Path from relation tt7 to relation tt6
- get_foreign_key_relation 
---------------------------
- 
-(1 row)
-
-SELECT get_foreign_key_relation('tt8'::regclass, TRUE);
-LOG:  Path from relation tt8 to relation tt7
-LOG:  Path from relation tt8 to relation tt6
- get_foreign_key_relation 
---------------------------
- 
-(1 row)
-
 -- Simple case with distributed tables
 CREATE TABLE dtt1(id int PRIMARY KEY);
 SELECT create_distributed_table('dtt1','id');
@@ -94,24 +36,121 @@ SELECT create_distributed_table('dtt3','id');
  
 (1 row)
 
-SELECT get_foreign_key_relation('dtt1'::regclass, TRUE);
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt1'::regclass, TRUE) ORDER BY 1;
  get_foreign_key_relation 
 --------------------------
- 
+(0 rows)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt2'::regclass, TRUE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+ tt1
+ tt4
+(2 rows)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt3'::regclass, TRUE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+ tt1
+ tt4
+ tt2
+ tt3
+(4 rows)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt4'::regclass, TRUE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+ tt4
 (1 row)
 
-SELECT get_foreign_key_relation('dtt2'::regclass, TRUE);
-LOG:  Path from relation dtt2 to relation dtt1
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt5'::regclass, TRUE) ORDER BY 1;
  get_foreign_key_relation 
 --------------------------
- 
+(0 rows)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt6'::regclass, TRUE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+(0 rows)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt7'::regclass, TRUE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+ tt6
 (1 row)
 
-SELECT get_foreign_key_relation('dtt3'::regclass, TRUE);
-LOG:  Path from relation dtt3 to relation dtt2
-LOG:  Path from relation dtt3 to relation dtt1
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt8'::regclass, TRUE) ORDER BY 1;
  get_foreign_key_relation 
 --------------------------
- 
+ tt6
+ tt7
+(2 rows)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt1'::regclass, FALSE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+ tt2
+ tt3
+(2 rows)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt2'::regclass, FALSE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+ tt3
 (1 row)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt3'::regclass, FALSE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+ tt3
+(1 row)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt4'::regclass, FALSE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+ tt4
+ tt2
+ tt3
+(3 rows)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt5'::regclass, FALSE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+(0 rows)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt6'::regclass, FALSE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+ tt7
+ tt8
+(2 rows)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt7'::regclass, FALSE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+ tt8
+(1 row)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt8'::regclass, FALSE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+(0 rows)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('dtt1'::regclass, TRUE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+(0 rows)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('dtt2'::regclass, TRUE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+ dtt1
+(1 row)
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('dtt3'::regclass, TRUE) ORDER BY 1;
+ get_foreign_key_relation 
+--------------------------
+ dtt1
+ dtt2
+(2 rows)
 
