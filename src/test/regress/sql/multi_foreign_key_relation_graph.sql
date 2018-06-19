@@ -3,7 +3,7 @@ SET client_min_messages TO LOG;
 SET citus.shard_replication_factor TO 1;
 
 CREATE FUNCTION get_foreign_key_relation(Oid, bool)
-    RETURNS void
+    RETURNS SETOF Oid
     LANGUAGE C STABLE STRICT
     AS 'citus', $$get_foreign_key_relation$$;
 
@@ -24,16 +24,6 @@ CREATE TABLE tt7(id int PRIMARY KEY, value_1 int REFERENCES tt6(id));
 
 CREATE TABLE tt8(id int PRIMARY KEY, value_1 int REFERENCES tt6(id), value_2 int REFERENCES tt7(id));
 
-
-SELECT get_foreign_key_relation('tt1'::regclass, TRUE);
-SELECT get_foreign_key_relation('tt2'::regclass, TRUE);
-SELECT get_foreign_key_relation('tt3'::regclass, TRUE);
-SELECT get_foreign_key_relation('tt4'::regclass, TRUE);
-SELECT get_foreign_key_relation('tt5'::regclass, TRUE);
-SELECT get_foreign_key_relation('tt6'::regclass, TRUE);
-SELECT get_foreign_key_relation('tt7'::regclass, TRUE);
-SELECT get_foreign_key_relation('tt8'::regclass, TRUE);
-
 -- Simple case with distributed tables
 CREATE TABLE dtt1(id int PRIMARY KEY);
 SELECT create_distributed_table('dtt1','id');
@@ -44,7 +34,24 @@ SELECT create_distributed_table('dtt2','id');
 CREATE TABLE dtt3(id int PRIMARY KEY REFERENCES dtt2(id));
 SELECT create_distributed_table('dtt3','id');
 
-SELECT get_foreign_key_relation('dtt1'::regclass, TRUE);
-SELECT get_foreign_key_relation('dtt2'::regclass, TRUE);
-SELECT get_foreign_key_relation('dtt3'::regclass, TRUE);
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt1'::regclass, TRUE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt2'::regclass, TRUE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt3'::regclass, TRUE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt4'::regclass, TRUE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt5'::regclass, TRUE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt6'::regclass, TRUE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt7'::regclass, TRUE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt8'::regclass, TRUE) ORDER BY 1;
 
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt1'::regclass, FALSE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt2'::regclass, FALSE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt3'::regclass, FALSE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt4'::regclass, FALSE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt5'::regclass, FALSE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt6'::regclass, FALSE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt7'::regclass, FALSE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt8'::regclass, FALSE) ORDER BY 1;
+
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('dtt1'::regclass, TRUE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('dtt2'::regclass, TRUE) ORDER BY 1;
+SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('dtt3'::regclass, TRUE) ORDER BY 1;

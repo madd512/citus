@@ -15,13 +15,6 @@
 #include "utils/hsearch.h"
 #include "nodes/primnodes.h"
 
-typedef struct FRelGraph
-{
-	HTAB *nodeMap;
-	uint32 *indexToOid;
-	int nodeCount;
-	bool **transitivityMatrix;
-}FRelGraph;
 
 extern void ErrorIfUnsupportedForeignConstraint(Relation relation, char
 												distributionMethod,
@@ -30,7 +23,7 @@ extern void ErrorIfUnsupportedForeignConstraint(Relation relation, char
 extern List * GetTableForeignConstraintCommands(Oid relationId);
 extern bool HasForeignKeyToReferenceTable(Oid relationId);
 extern bool TableReferenced(Oid relationId);
-extern FRelGraph * CreateForeignKeyRelationGraph(void);
-List * GetForeignKeyRelation(FRelGraph *frelGraph, Oid relationId, bool isAffecting);
+extern void CreateForeignKeyRelationGraph(void);
+extern List * GetForeignKeyRelation(Oid relationId, bool isAffecting);
 
 #endif
