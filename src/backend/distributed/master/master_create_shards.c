@@ -335,9 +335,7 @@ CreateColocatedShards(Oid targetRelationId, Oid sourceRelationId, bool
 		}
 	}
 
-	CreateShardsOnWorkers(targetRelationId, insertedShardPlacements,
-						  useExclusiveConnections, colocatedShard);
-
+	/* mark parallel relation accesses before opening connections */
 	if (useExclusiveConnections)
 	{
 		RecordParallelDDLAccess(targetRelationId);
@@ -349,6 +347,9 @@ CreateColocatedShards(Oid targetRelationId, Oid sourceRelationId, bool
 			RecordParallelDDLAccess(parentRelationId);
 		}
 	}
+
+	CreateShardsOnWorkers(targetRelationId, insertedShardPlacements,
+						  useExclusiveConnections, colocatedShard);
 }
 
 
