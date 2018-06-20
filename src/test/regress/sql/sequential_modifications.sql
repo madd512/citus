@@ -6,8 +6,16 @@
 --
 CREATE SCHEMA test_seq_ddl;
 SET search_path TO 'test_seq_ddl';
+<<<<<<< HEAD
 SET citus.next_shard_id TO 1600;
 SET citus.next_placement_id TO 1600;
+=======
+<<<<<<< HEAD
+=======
+SET citus.next_shard_id TO 16000;
+SET citus.next_placement_id TO 16000;
+>>>>>>> 04e6514... Fix sequence id conflicts
+>>>>>>> 0bd4dd7... Fix sequence id conflicts
 
 -- this function simply checks the equality of the number of transactions in the
 -- pg_dist_transaction and number of primary worker nodes
