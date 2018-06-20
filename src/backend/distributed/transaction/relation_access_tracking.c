@@ -289,10 +289,16 @@ RecordParallelRelationAccess(Oid relationId, ShardPlacementAccessType placementA
 
 	hashKey.relationId = relationId;
 
-	hashEntry = hash_search(RelationAccessHash, &hashKey, HASH_FIND, &found);
+	hashEntry = hash_search(RelationAccessHash, &hashKey, HASH_ENTER, &found);
+	if (!found)
+	{
+		hashEntry->relationAccessMode = 0;
+	}
 
-	Assert(found);
+	/* set the bit representing the access type */
+	hashEntry->relationAccessMode |= (1 << (placementAccess));
 
+	/* set the bit representing access mode */
 	multiShardAccessBit = placementAccess + PARALLEL_MODE_FLAG_OFFSET;
 	hashEntry->relationAccessMode |= (1 << multiShardAccessBit);
 }
