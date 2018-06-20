@@ -1315,6 +1315,25 @@ ExecuteModifyTasks(List *taskList, bool expectResults, ParamListInfo paramListIn
 	}
 
 	/*
+	 * With a similar rationale as above, where we expect all tasks to operate on
+	 * the same relations, we prefer to record relation accesses for the first
+	 * task only.
+	 */
+	if (firstTask->taskType == MODIFY_TASK)
+	{
+		RecordRelationMultiShardModifyAccessForTask(firstTask);
+	}
+	else if (firstTask->taskType == DDL_TASK &&
+			 PartitionMethod(firstShardInterval->relationId) != DISTRIBUTE_BY_NONE)
+	{
+		/*
+		 * Even single task DDLs hit here, so we'd prefer
+		 * not to record for reference tables.
+		 */
+		RecordRelationMultiShardDDLAccessForTask(firstTask);
+	}
+
+	/*
 	 * Ensure that there are no concurrent modifications on the same
 	 * shards. In general, for DDL commands, we already obtained the
 	 * appropriate locks in ProcessUtility. However, we still prefer to
@@ -1369,20 +1388,6 @@ ExecuteModifyTasks(List *taskList, bool expectResults, ParamListInfo paramListIn
 			shardConnections = GetShardHashConnections(shardConnectionHash, shardId,
 													   &shardConnectionsFound);
 			connectionList = shardConnections->connectionList;
-
-			if (task->taskType == MODIFY_TASK)
-			{
-				RecordRelationMultiShardModifyAccessForTask(task);
-			}
-			else if (task->taskType == DDL_TASK &&
-					 PartitionMethod(RelationIdForShard(shardId)) != DISTRIBUTE_BY_NONE)
-			{
-				/*
-				 * Even single task DDLs hit here, so we'd prefer
-				 * not to record for reference tables.
-				 */
-				RecordRelationMultiShardDDLAccessForTask(task);
-			}
 
 			if (placementIndex >= list_length(connectionList))
 			{
