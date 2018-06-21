@@ -128,11 +128,11 @@ AssociatePlacementAccessWithRelation(ShardPlacement *placement,
 
 
 /*
- * RecordRelationMultiShardSelectAccessForTask goes over all the relations
+ * RecordRelationParallelSelectAccessForTask goes over all the relations
  * in the relationShardList and records the select access per each table.
  */
 void
-RecordRelationMultiShardSelectAccessForTask(Task *task)
+RecordRelationParallelSelectAccessForTask(Task *task)
 {
 	List *relationShardList = NIL;
 	ListCell *relationShardCell = NULL;
@@ -168,13 +168,13 @@ RecordRelationMultiShardSelectAccessForTask(Task *task)
 
 
 /*
- * RecordRelationMultiShardModifyAccessForTask gets a task and records
+ * RecordRelationParallelModifyAccessForTask gets a task and records
  * the accesses. Note that the target relation is recorded with modify access
  * where as the subqueries inside the modify query is recorded with select
  * access.
  */
 void
-RecordRelationMultiShardModifyAccessForTask(Task *task)
+RecordRelationParallelModifyAccessForTask(Task *task)
 {
 	List *relationShardList = NULL;
 	ListCell *relationShardCell = NULL;
@@ -215,13 +215,13 @@ RecordRelationMultiShardModifyAccessForTask(Task *task)
 
 
 /*
- * RecordRelationMultiShardDDLAccessForTask marks all the relationShards
+ * RecordRelationParallelDDLAccessForTask marks all the relationShards
  * with parallel DDL access if exists. That case is valid for inter-shard
  * DDL commands such as foreign key creation. The function also records
  * the relation that anchorShardId belongs to.
  */
 void
-RecordRelationMultiShardDDLAccessForTask(Task *task)
+RecordRelationParallelDDLAccessForTask(Task *task)
 {
 	List *relationShardList = task->relationShardList;
 	ListCell *relationShardCell = NULL;
@@ -279,7 +279,7 @@ RecordParallelRelationAccess(Oid relationId, ShardPlacementAccessType placementA
 	RelationAccessHashKey hashKey;
 	RelationAccessHashEntry *hashEntry;
 	bool found = false;
-	int multiShardAccessBit = 0;
+	int parallelRelationAccessBit = 0;
 
 	/* no point in recoding accesses in non-transaction blocks */
 	if (!IsTransactionBlock())
@@ -299,8 +299,8 @@ RecordParallelRelationAccess(Oid relationId, ShardPlacementAccessType placementA
 	hashEntry->relationAccessMode |= (1 << (placementAccess));
 
 	/* set the bit representing access mode */
-	multiShardAccessBit = placementAccess + PARALLEL_MODE_FLAG_OFFSET;
-	hashEntry->relationAccessMode |= (1 << multiShardAccessBit);
+	parallelRelationAccessBit = placementAccess + PARALLEL_MODE_FLAG_OFFSET;
+	hashEntry->relationAccessMode |= (1 << parallelRelationAccessBit);
 }
 
 
@@ -345,7 +345,7 @@ GetRelationAccessMode(Oid relationId, ShardPlacementAccessType accessType)
 	RelationAccessHashEntry *hashEntry;
 	int relationAcessMode = 0;
 	bool found = false;
-	int multiShardAccessBit = accessType + PARALLEL_MODE_FLAG_OFFSET;
+	int parallelRelationAccessBit = accessType + PARALLEL_MODE_FLAG_OFFSET;
 
 	/* no point in getting the mode when not inside a transaction block */
 	if (!IsTransactionBlock())
@@ -370,7 +370,7 @@ GetRelationAccessMode(Oid relationId, ShardPlacementAccessType accessType)
 		return RELATION_NOT_ACCESSED;
 	}
 
-	if (relationAcessMode & (1 << multiShardAccessBit))
+	if (relationAcessMode & (1 << parallelRelationAccessBit))
 	{
 		return RELATION_PARALLEL_ACCESSED;
 	}

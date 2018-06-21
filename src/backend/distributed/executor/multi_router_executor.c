@@ -1321,7 +1321,7 @@ ExecuteModifyTasks(List *taskList, bool expectResults, ParamListInfo paramListIn
 	 */
 	if (firstTask->taskType == MODIFY_TASK)
 	{
-		RecordRelationMultiShardModifyAccessForTask(firstTask);
+		RecordRelationParallelModifyAccessForTask(firstTask);
 	}
 	else if (firstTask->taskType == DDL_TASK &&
 			 PartitionMethod(firstShardInterval->relationId) != DISTRIBUTE_BY_NONE)
@@ -1330,7 +1330,7 @@ ExecuteModifyTasks(List *taskList, bool expectResults, ParamListInfo paramListIn
 		 * Even single task DDLs hit here, so we'd prefer
 		 * not to record for reference tables.
 		 */
-		RecordRelationMultiShardDDLAccessForTask(firstTask);
+		RecordRelationParallelDDLAccessForTask(firstTask);
 	}
 
 	/*

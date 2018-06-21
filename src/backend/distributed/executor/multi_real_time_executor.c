@@ -111,7 +111,7 @@ MultiRealTimeExecute(Job *job)
 		/* keep track of multi shard accesses before opening the connections */
 		if (MultiShardConnectionType == PARALLEL_CONNECTION)
 		{
-			RecordRelationMultiShardSelectAccessForTask(task);
+			RecordRelationParallelSelectAccessForTask(task);
 		}
 
 		taskExecution = InitTaskExecution(task, EXEC_TASK_CONNECT_START);
