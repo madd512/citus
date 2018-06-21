@@ -163,6 +163,7 @@ static List * CopyGetAttnums(TupleDesc tupDesc, Relation rel, List *attnamelist)
 static void PostProcessUtility(Node *parsetree);
 static List * CollectGrantTableIdList(GrantStmt *grantStmt);
 static void ProcessDropTableStmt(DropStmt *dropTableStatement);
+static bool ShouldExecuteAlterTableSequentially(Oid relationId, AlterTableCmd *command);
 
 
 /*
@@ -1308,6 +1309,9 @@ PlanAlterTableStmt(AlterTableStmt *alterTableStatement, const char *alterTableCo
 		AlterTableCmd *command = (AlterTableCmd *) lfirst(commandCell);
 		AlterTableType alterTableType = command->subtype;
 
+		executeSequentially = ShouldExecuteAlterTableSequentially(leftRelationId,
+																  command);
+
 		if (alterTableType == AT_AddConstraint)
 		{
 			Constraint *constraint = (Constraint *) command->def;
@@ -1331,23 +1335,6 @@ PlanAlterTableStmt(AlterTableStmt *alterTableStatement, const char *alterTableCo
 				 * transaction is in process, which causes deadlock.
 				 */
 				constraint->skip_validation = true;
-			}
-		}
-		else if (alterTableType == AT_DropConstraint)
-		{
-			char *constraintName = command->name;
-			if (ConstraintIsAForeignKeyToReferenceTable(constraintName, leftRelationId))
-			{
-				executeSequentially = true;
-			}
-		}
-		else if (alterTableType == AT_DropColumn)
-		{
-			char *droppedColumnName = command->name;
-			if (ForeignKeyExistsFromColumnToReferenceTable(droppedColumnName,
-														   leftRelationId))
-			{
-				executeSequentially = true;
 			}
 		}
 #if (PG_VERSION_NUM >= 100000)
@@ -3805,4 +3792,41 @@ ProcessDropTableStmt(DropStmt *dropTableStatement)
 			SendCommandToWorkers(WORKERS_WITH_METADATA, detachPartitionCommand);
 		}
 	}
+}
+
+
+static bool
+ShouldExecuteAlterTableSequentially(Oid relationId, AlterTableCmd *command)
+{
+	AlterTableType alterTableType = command->subtype;
+	if (alterTableType == AT_DropConstraint)
+	{
+		char *constraintName = command->name;
+		if (ConstraintIsAForeignKeyToReferenceTable(constraintName, relationId))
+		{
+			return true;
+		}
+	}
+	else if (alterTableType == AT_DropColumn || alterTableType == AT_AlterColumnType)
+	{
+		char *affectedColumnName = command->name;
+
+		/*
+		 * We need to set multi_shard_modify_mode to sequential since SET DATA TYPE
+		 * command issues one select and one DDL to see if there is incompatible
+		 * data for the new column type.
+		 */
+		if (IsTransactionBlock() && alterTableType == AT_AlterColumnType)
+		{
+			SetLocalMultiShardModifyModeToSequential();
+		}
+
+		if (ForeignKeyExistsToReferenceTableOnColumn(affectedColumnName,
+													 relationId))
+		{
+			return true;
+		}
+	}
+
+	return false;
 }

@@ -20,8 +20,8 @@ extern void ErrorIfUnsupportedForeignConstraint(Relation relation, char
 												distributionMethod,
 												Var *distributionColumn, uint32
 												colocationId);
-extern bool ForeignKeyExistsFromColumnToReferenceTable(char *droppedColumnName,
-													   Oid leftRelationId);
+extern bool ForeignKeyExistsToReferenceTableOnColumn(char *affectedColumnName, Oid
+													 relationId);
 extern List * GetTableForeignConstraintCommands(Oid relationId);
 extern bool HasForeignKeyToReferenceTable(Oid relationId);
 extern bool TableReferenced(Oid relationId);

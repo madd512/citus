@@ -370,8 +370,8 @@ ErrorIfUnsupportedForeignConstraint(Relation relation, char distributionMethod,
 
 
 bool
-ForeignKeyExistsFromColumnToReferenceTable(char *droppedColumnName,
-										   Oid leftRelationId)
+ForeignKeyExistsToReferenceTableOnColumn(char *affectedColumnName,
+										 Oid relationId)
 {
 	Relation pgConstraint = NULL;
 	SysScanDesc scanDescriptor = NULL;
@@ -380,9 +380,9 @@ ForeignKeyExistsFromColumnToReferenceTable(char *droppedColumnName,
 	HeapTuple heapTuple = NULL;
 	bool foreignKeyToReferenceTableIncludesGivenColumn = false;
 	bool isNull = false;
-	Datum referencingColumnsDatum;
-	Datum *referencingColumnArray;
-	int referencingColumnCount = 0;
+	Datum columnsDatum;
+	Datum *columnArray;
+	int columnCount = 0;
 	int attrIdx;
 
 	pgConstraint = heap_open(ConstraintRelationId, AccessShareLock);
@@ -390,7 +390,7 @@ ForeignKeyExistsFromColumnToReferenceTable(char *droppedColumnName,
 	ScanKeyInit(&scanKey[0],
 				Anum_pg_constraint_connamespace,
 				BTEqualStrategyNumber, F_OIDEQ,
-				get_rel_namespace(leftRelationId));
+				get_rel_namespace(relationId));
 
 	scanDescriptor = systable_beginscan(pgConstraint, ConstraintNameNspIndexId, true,
 										NULL,
@@ -400,6 +400,8 @@ ForeignKeyExistsFromColumnToReferenceTable(char *droppedColumnName,
 	while (HeapTupleIsValid(heapTuple))
 	{
 		Oid referencedTableId;
+		Oid referencingTableId;
+		int pgConstraintKey = 0;
 		Form_pg_constraint constraintForm = (Form_pg_constraint) GETSTRUCT(heapTuple);
 
 		if (constraintForm->contype != CONSTRAINT_FOREIGN)
@@ -408,28 +410,38 @@ ForeignKeyExistsFromColumnToReferenceTable(char *droppedColumnName,
 			continue;
 		}
 
-		referencingColumnsDatum = SysCacheGetAttr(CONSTROID, heapTuple,
-												  Anum_pg_constraint_conkey, &isNull);
-		deconstruct_array(DatumGetArrayTypeP(referencingColumnsDatum), INT2OID, 2, true,
-						  's', &referencingColumnArray, NULL, &referencingColumnCount);
 		referencedTableId = constraintForm->confrelid;
+		referencingTableId = constraintForm->conrelid;
+
+		if (referencedTableId == relationId)
+		{
+			pgConstraintKey = Anum_pg_constraint_confkey;
+		}
+		else if (referencingTableId == relationId)
+		{
+			pgConstraintKey = Anum_pg_constraint_conkey;
+		}
+
+		columnsDatum = SysCacheGetAttr(CONSTROID, heapTuple,
+									   pgConstraintKey, &isNull);
+		deconstruct_array(DatumGetArrayTypeP(columnsDatum), INT2OID, 2, true,
+						  's', &columnArray, NULL, &columnCount);
 
 		if (PartitionMethod(referencedTableId) == DISTRIBUTE_BY_NONE)
 		{
-			for (attrIdx = 0; attrIdx < referencingColumnCount; ++attrIdx)
+			for (attrIdx = 0; attrIdx < columnCount; ++attrIdx)
 			{
-				AttrNumber referencingAttrNo = DatumGetInt16(
-					referencingColumnArray[attrIdx]);
+				AttrNumber attrNo = DatumGetInt16(columnArray[attrIdx]);
 
-				char *colName = get_relid_attribute_name(leftRelationId,
-														 referencingAttrNo);
-				if (strcmp(colName, droppedColumnName) == 0)
+				char *colName = get_relid_attribute_name(relationId, attrNo);
+				if (strcmp(colName, affectedColumnName) == 0)
 				{
 					foreignKeyToReferenceTableIncludesGivenColumn = true;
 					break;
 				}
 			}
 		}
+
 		if (foreignKeyToReferenceTableIncludesGivenColumn)
 		{
 			break;
