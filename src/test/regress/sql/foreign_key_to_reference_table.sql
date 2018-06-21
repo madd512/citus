@@ -198,7 +198,6 @@ DELETE FROM referenced_table WHERE id > 3;
 DELETE FROM referenced_table WHERE id = 501;
 
 -- test cascading truncate
--- will fail for now
 TRUNCATE referenced_table CASCADE;
 SELECT count(*) FROM referencing_table;
 
@@ -679,6 +678,212 @@ BEGIN;
 
   DROP TABLE test_table_2, test_table_1;
 COMMIT;
+
+-- The following tests check if the DDLs affecting foreign keys work as expected
+-- check if we can drop the foreign constraint
+CREATE TABLE test_table_1(id int PRIMARY KEY);
+CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+
+SELECT create_reference_table('test_table_1');
+SELECT create_distributed_table('test_table_2', 'id');
+SELECT count(*) FROM table_fkeys_in_workers WHERE relid LIKE 'fkey_reference_table.%' AND refd_relid LIKE 'fkey_reference_table.%';
+
+ALTER TABLE test_table_2 DROP CONSTRAINT test_table_2_value_1_fkey;
+SELECT count(*) FROM table_fkeys_in_workers WHERE relid LIKE 'fkey_reference_table.%' AND refd_relid LIKE 'fkey_reference_table.%';
+
+DROP TABLE test_table_1, test_table_2;
+
+-- check if we can drop the foreign constraint in a transaction right after ADD CONSTRAINT
+-- FIXME: fails for now
+BEGIN;
+  CREATE TABLE test_table_1(id int PRIMARY KEY);
+  CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int);
+
+  SELECT create_reference_table('test_table_1');
+  SELECT create_distributed_table('test_table_2', 'id');
+
+  ALTER TABLE test_table_2 ADD CONSTRAINT foreign_key FOREIGN KEY(value_1) REFERENCES test_table_1(id);
+  ALTER TABLE test_table_2 DROP CONSTRAINT test_table_2_value_1_fkey;
+COMMIT;
+
+SELECT count(*) FROM table_fkeys_in_workers WHERE relid LIKE 'fkey_reference_table.%' AND refd_relid LIKE 'fkey_reference_table.%';
+DROP TABLE test_table_1, test_table_2;
+
+-- check if we can drop the primary key which cascades to the foreign key
+CREATE TABLE test_table_1(id int PRIMARY KEY);
+CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+
+SELECT create_reference_table('test_table_1');
+SELECT create_distributed_table('test_table_2', 'id');
+
+ALTER TABLE test_table_1 DROP CONSTRAINT test_table_1_pkey CASCADE;
+SELECT count(*) FROM table_fkeys_in_workers WHERE relid LIKE 'fkey_reference_table.%' AND refd_relid LIKE 'fkey_reference_table.%';
+DROP TABLE test_table_1, test_table_2;
+
+-- check if we can drop the primary key which cascades to the foreign key in a transaction block
+BEGIN;
+  CREATE TABLE test_table_1(id int PRIMARY KEY);
+  CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+
+  SELECT create_reference_table('test_table_1');
+  SELECT create_distributed_table('test_table_2', 'id');
+
+  ALTER TABLE test_table_1 DROP CONSTRAINT test_table_1_pkey CASCADE;
+COMMIT;
+
+SELECT count(*) FROM table_fkeys_in_workers WHERE relid LIKE 'fkey_reference_table.%' AND refd_relid LIKE 'fkey_reference_table.%';
+DROP TABLE test_table_1, test_table_2;
+
+-- check if we can drop the column which foreign key is referencing from
+CREATE TABLE test_table_1(id int PRIMARY KEY, id2 int);
+CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+
+SELECT create_reference_table('test_table_1');
+SELECT create_distributed_table('test_table_2', 'id');
+
+ALTER TABLE test_table_2 DROP COLUMN value_1;
+SELECT count(*) FROM table_fkeys_in_workers WHERE relid LIKE 'fkey_reference_table.%' AND refd_relid LIKE 'fkey_reference_table.%';
+DROP TABLE test_table_1, test_table_2;
+
+-- check if we can drop the column which foreign key is referencing from in a transaction block
+CREATE TABLE test_table_1(id int PRIMARY KEY, id2 int);
+CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+
+BEGIN;
+  SELECT create_reference_table('test_table_1');
+  SELECT create_distributed_table('test_table_2', 'id');
+
+  ALTER TABLE test_table_2 DROP COLUMN value_1;
+COMMIT;
+SELECT count(*) FROM table_fkeys_in_workers WHERE relid LIKE 'fkey_reference_table.%' AND refd_relid LIKE 'fkey_reference_table.%';
+DROP TABLE test_table_1, test_table_2;
+
+-- check if we can drop the column which foreign key is referencing to
+CREATE TABLE test_table_1(id int PRIMARY KEY, id2 int);
+CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+
+SELECT create_reference_table('test_table_1');
+SELECT create_distributed_table('test_table_2', 'id');
+
+ALTER TABLE test_table_1 DROP COLUMN id CASCADE;
+SELECT count(*) FROM table_fkeys_in_workers WHERE relid LIKE 'fkey_reference_table.%' AND refd_relid LIKE 'fkey_reference_table.%';
+DROP TABLE test_table_1, test_table_2;
+
+-- check if we can drop the column which foreign key is referencing from in a transaction block
+CREATE TABLE test_table_1(id int PRIMARY KEY, id2 int);
+CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+
+BEGIN;
+  SELECT create_reference_table('test_table_1');
+  SELECT create_distributed_table('test_table_2', 'id');
+
+  ALTER TABLE test_table_1 DROP COLUMN id CASCADE;
+COMMIT;
+SELECT count(*) FROM table_fkeys_in_workers WHERE relid LIKE 'fkey_reference_table.%' AND refd_relid LIKE 'fkey_reference_table.%';
+DROP TABLE test_table_1, test_table_2;
+
+-- check if we can alter the column type which foreign key is referencing to
+CREATE TABLE test_table_1(id int PRIMARY KEY, id2 int);
+CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+
+SELECT create_reference_table('test_table_1');
+SELECT create_distributed_table('test_table_2', 'id');
+INSERT INTO test_table_1 VALUES (1,1), (2,2), (3,3);
+INSERT INTO test_table_2 VALUES (1,1), (2,2), (3,3);
+
+ALTER TABLE test_table_2 ALTER COLUMN value_1 SET DATA TYPE bigint;
+SELECT count(*) FROM table_fkeys_in_workers WHERE relid LIKE 'fkey_reference_table.%' AND refd_relid LIKE 'fkey_reference_table.%';
+DROP TABLE test_table_1 CASCADE;
+DROP TABLE test_table_2;
+
+-- check if we can alter the column type and drop it which foreign key is referencing to in a transaction block
+CREATE TABLE test_table_1(id int PRIMARY KEY);
+CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+
+BEGIN;
+  SELECT create_reference_table('test_table_1');
+  SELECT create_distributed_table('test_table_2', 'id');
+
+  ALTER TABLE test_table_2 ALTER COLUMN value_1 SET DATA TYPE bigint;
+  ALTER TABLE test_table_1 DROP COLUMN id CASCADE;
+COMMIT;
+
+SELECT count(*) FROM table_fkeys_in_workers WHERE relid LIKE 'fkey_reference_table.%' AND refd_relid LIKE 'fkey_reference_table.%';
+DROP TABLE test_table_1, test_table_2;
+
+-- check if we can TRUNCATE the referenced table
+CREATE TABLE test_table_1(id int PRIMARY KEY);
+CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+SELECT create_reference_table('test_table_1');
+SELECT create_distributed_table('test_table_2', 'id');
+
+INSERT INTO test_table_1 VALUES (1),(2),(3);
+INSERT INTO test_table_2 VALUES (1,1),(2,2),(3,3); 
+TRUNCATE test_table_1 CASCADE;
+
+SELECT * FROM test_table_2;
+DROP TABLE test_table_1, test_table_2;
+
+-- check if we can TRUNCATE the referenced table in a transaction
+CREATE TABLE test_table_1(id int PRIMARY KEY);
+CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+SELECT create_reference_table('test_table_1');
+SELECT create_distributed_table('test_table_2', 'id');
+
+INSERT INTO test_table_1 VALUES (1),(2),(3);
+INSERT INTO test_table_2 VALUES (1,1),(2,2),(3,3); 
+
+BEGIN;
+  TRUNCATE test_table_1 CASCADE;
+COMMIT;
+SELECT * FROM test_table_2;
+DROP TABLE test_table_1, test_table_2;
+
+-- check if we can TRUNCATE the referenced table in a transaction after inserts
+CREATE TABLE test_table_1(id int PRIMARY KEY);
+CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+
+BEGIN;
+  SELECT create_reference_table('test_table_1');
+  SELECT create_distributed_table('test_table_2', 'id');
+
+  INSERT INTO test_table_1 VALUES (1),(2),(3);
+  INSERT INTO test_table_2 VALUES (1,1),(2,2),(3,3);
+  TRUNCATE test_table_1 CASCADE;
+COMMIT;
+
+SELECT * FROM test_table_2;
+DROP TABLE test_table_1, test_table_2;
+
+-- check if we can TRUNCATE the referencing table
+CREATE TABLE test_table_1(id int PRIMARY KEY);
+CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+SELECT create_reference_table('test_table_1');
+SELECT create_distributed_table('test_table_2', 'id');
+
+INSERT INTO test_table_1 VALUES (1),(2),(3);
+INSERT INTO test_table_2 VALUES (1,1),(2,2),(3,3); 
+TRUNCATE test_table_2 CASCADE;
+
+SELECT * FROM test_table_2;
+SELECT * FROM test_table_1;
+DROP TABLE test_table_1, test_table_2;
+
+-- check if we can TRUNCATE the referencing table in a transaction
+CREATE TABLE test_table_1(id int PRIMARY KEY);
+CREATE TABLE test_table_2(id int PRIMARY KEY, value_1 int, FOREIGN KEY(value_1) REFERENCES test_table_1(id));
+SELECT create_reference_table('test_table_1');
+SELECT create_distributed_table('test_table_2', 'id');
+
+INSERT INTO test_table_1 VALUES (1),(2),(3);
+INSERT INTO test_table_2 VALUES (1,1),(2,2),(3,3); 
+BEGIN;
+  TRUNCATE test_table_2 CASCADE;
+COMMIT;
+
+SELECT * FROM test_table_2;
+SELECT * FROM test_table_1;
+DROP TABLE test_table_1, test_table_2;
 
 DROP SCHEMA fkey_reference_table CASCADE;
 SET search_path TO DEFAULT;
