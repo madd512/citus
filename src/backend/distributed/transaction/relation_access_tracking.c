@@ -139,7 +139,7 @@ RecordRelationParallelSelectAccessForTask(Task *task)
 	Oid lastRelationId = InvalidOid;
 
 	/* no point in recoding accesses in non-transaction blocks, skip the loop */
-	if (!IsTransactionBlock())
+	if (!ShouldRecordRelationAccess())
 	{
 		return;
 	}
@@ -181,7 +181,7 @@ RecordRelationParallelModifyAccessForTask(Task *task)
 	Oid lastRelationId = InvalidOid;
 
 	/* no point in recoding accesses in non-transaction blocks, skip the loop */
-	if (!IsTransactionBlock())
+	if (!ShouldRecordRelationAccess())
 	{
 		return;
 	}
@@ -294,7 +294,7 @@ RecordParallelRelationAccess(Oid relationId, ShardPlacementAccessType placementA
 	int parallelRelationAccessBit = 0;
 
 	/* no point in recoding accesses in non-transaction blocks */
-	if (!IsTransactionBlock())
+	if (!ShouldRecordRelationAccess())
 	{
 		return;
 	}
@@ -360,7 +360,7 @@ GetRelationAccessMode(Oid relationId, ShardPlacementAccessType accessType)
 	int parallelRelationAccessBit = accessType + PARALLEL_MODE_FLAG_OFFSET;
 
 	/* no point in getting the mode when not inside a transaction block */
-	if (!IsTransactionBlock())
+	if (!ShouldRecordRelationAccess())
 	{
 		return RELATION_NOT_ACCESSED;
 	}
@@ -390,4 +390,26 @@ GetRelationAccessMode(Oid relationId, ShardPlacementAccessType accessType)
 	{
 		return RELATION_SEQUENTIAL_ACCESSED;
 	}
+}
+
+
+/*
+ * ShouldRecordRelationAccess returns true when we should keep track
+ * of the relation accesses.
+ *
+ * In many cases, we'd only need IsTransactionBlock(), however, for some cases such as
+ * CTEs, where Citus uses the same connections accross multiple queries, we should
+ * still record the relation accesses even not inside an explicit transaction block.
+ * Thus, keeping track of the relation accesses inside coordinated transactions is
+ * also required.
+ */
+bool
+ShouldRecordRelationAccess()
+{
+	if (IsTransactionBlock() || InCoordinatedTransaction())
+	{
+		return true;
+	}
+
+	return false;
 }

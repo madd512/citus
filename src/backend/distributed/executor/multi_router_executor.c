@@ -1315,25 +1315,6 @@ ExecuteModifyTasks(List *taskList, bool expectResults, ParamListInfo paramListIn
 	}
 
 	/*
-	 * With a similar rationale as above, where we expect all tasks to operate on
-	 * the same relations, we prefer to record relation accesses for the first
-	 * task only.
-	 */
-	if (firstTask->taskType == MODIFY_TASK)
-	{
-		RecordRelationParallelModifyAccessForTask(firstTask);
-	}
-	else if (firstTask->taskType == DDL_TASK &&
-			 PartitionMethod(firstShardInterval->relationId) != DISTRIBUTE_BY_NONE)
-	{
-		/*
-		 * Even single task DDLs hit here, so we'd prefer
-		 * not to record for reference tables.
-		 */
-		RecordRelationParallelDDLAccessForTask(firstTask);
-	}
-
-	/*
 	 * Ensure that there are no concurrent modifications on the same
 	 * shards. In general, for DDL commands, we already obtained the
 	 * appropriate locks in ProcessUtility. However, we still prefer to
@@ -1350,6 +1331,25 @@ ExecuteModifyTasks(List *taskList, bool expectResults, ParamListInfo paramListIn
 		firstTask->replicationModel == REPLICATION_MODEL_2PC)
 	{
 		CoordinatedTransactionUse2PC();
+	}
+
+	/*
+	 * With a similar rationale as above, where we expect all tasks to operate on
+	 * the same relations, we prefer to record relation accesses for the first
+	 * task only.
+	 */
+	if (firstTask->taskType == MODIFY_TASK)
+	{
+		RecordRelationParallelModifyAccessForTask(firstTask);
+	}
+	else if (firstTask->taskType == DDL_TASK &&
+			 PartitionMethod(firstShardInterval->relationId) != DISTRIBUTE_BY_NONE)
+	{
+		/*
+		 * Even single task DDLs hit here, so we'd prefer
+		 * not to record for reference tables.
+		 */
+		RecordRelationParallelDDLAccessForTask(firstTask);
 	}
 
 	if (firstTask->taskType == DDL_TASK || firstTask->taskType == VACUUM_ANALYZE_TASK)

@@ -36,6 +36,7 @@ extern void RecordRelationParallelDDLAccessForTask(Task *task);
 extern RelationAccessMode GetRelationDDLAccessMode(Oid relationId);
 extern RelationAccessMode GetRelationDMLAccessMode(Oid relationId);
 extern RelationAccessMode GetRelationSelectAccessMode(Oid relationId);
+extern bool ShouldRecordRelationAccess(void);
 
 
 #endif /* RELATION_ACCESS_TRACKING_H_ */

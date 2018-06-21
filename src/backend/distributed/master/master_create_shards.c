@@ -34,7 +34,6 @@
 #include "distributed/pg_dist_partition.h"
 #include "distributed/pg_dist_shard.h"
 #include "distributed/reference_table_utils.h"
-#include "distributed/relation_access_tracking.h"
 #include "distributed/resource_lock.h"
 #include "distributed/shardinterval_utils.h"
 #include "distributed/transaction_management.h"
@@ -332,19 +331,6 @@ CreateColocatedShards(Oid targetRelationId, Oid sourceRelationId, bool
 
 			shardPlacement = LoadShardPlacement(newShardId, shardPlacementId);
 			insertedShardPlacements = lappend(insertedShardPlacements, shardPlacement);
-		}
-	}
-
-	/* mark parallel relation accesses before opening connections */
-	if (useExclusiveConnections)
-	{
-		RecordParallelDDLAccess(targetRelationId);
-
-		/* we should mark the parent as well */
-		if (PartitionTable(targetRelationId))
-		{
-			Oid parentRelationId = PartitionParentOid(targetRelationId);
-			RecordParallelDDLAccess(parentRelationId);
 		}
 	}
 
