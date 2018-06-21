@@ -225,12 +225,24 @@ RecordRelationParallelDDLAccessForTask(Task *task)
 {
 	List *relationShardList = task->relationShardList;
 	ListCell *relationShardCell = NULL;
+	Oid lastRelationId = InvalidOid;
 
 	foreach(relationShardCell, relationShardList)
 	{
 		RelationShard *relationShard = (RelationShard *) lfirst(relationShardCell);
+		Oid currentRelationId = relationShard->relationId;
 
-		RecordParallelDDLAccess(relationShard->relationId);
+		/*
+		 * An optimization, skip going to hash table if we've already
+		 * recorded the relation.
+		 */
+		if (currentRelationId == lastRelationId)
+		{
+			continue;
+		}
+
+		RecordParallelDDLAccess(currentRelationId);
+		lastRelationId = currentRelationId;
 	}
 
 	RecordParallelDDLAccess(RelationIdForShard(task->anchorShardId));
