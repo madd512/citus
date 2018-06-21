@@ -1341,6 +1341,13 @@ ExecuteModifyTasks(List *taskList, bool expectResults, ParamListInfo paramListIn
 	if (firstTask->taskType == MODIFY_TASK)
 	{
 		RecordRelationParallelModifyAccessForTask(firstTask);
+
+		/*
+		 * We prefer to mark with SELECT access as well because for multi shard
+		 * modification queries, the placement access list is always marked with both
+		 * DML and SELECT accesses.
+		 */
+		RecordRelationParallelSelectAccessForTask(firstTask);
 	}
 	else if (firstTask->taskType == DDL_TASK &&
 			 PartitionMethod(firstShardInterval->relationId) != DISTRIBUTE_BY_NONE)
