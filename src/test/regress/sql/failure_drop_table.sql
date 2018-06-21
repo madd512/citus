@@ -51,11 +51,14 @@ SELECT citus.mitmproxy('conn.contains(b"PREPARE TRANSACTION").kill()');
 DROP TABLE append;
 
 SELECT citus.mitmproxy('conn.contains(b"COMMIT PREPARED").kill()');
-SELECT count(1) FROM pg_dist_transaction;
 -- we've already sent COMMIT PREPARED to the other worker, so there's no turning back now!
 -- we have, however, gained an entry in pg_dist_transaction. A later call to
 -- recover_prepared_transactions() will fix that.
-SET citus.enable_unique_prepared_txn_ids TO false;
+SELECT count(1) FROM pg_dist_transaction;
+-- prepared transaction ids aren't reproducible (they embed information such as the
+-- process PID), so suppress them and instead just assert that we've added a transaction
+-- waiting to be cleaned up.
+SET client_min_messages TO 'error';
 DROP TABLE append;
 SELECT count(1) FROM pg_dist_transaction;
 
