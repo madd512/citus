@@ -163,7 +163,13 @@ static List * CopyGetAttnums(TupleDesc tupDesc, Relation rel, List *attnamelist)
 static void PostProcessUtility(Node *parsetree);
 static List * CollectGrantTableIdList(GrantStmt *grantStmt);
 static void ProcessDropTableStmt(DropStmt *dropTableStatement);
+
+/*
+ * We need to run some of the commands sequentially if there is a foreign constraint
+ * from/to reference table.
+ */
 static bool ShouldExecuteAlterTableSequentially(Oid relationId, AlterTableCmd *command);
+static bool ShouldExecuteTruncateStmtSequential(TruncateStmt *command);
 
 
 /*
@@ -336,6 +342,11 @@ multi_ProcessUtility(PlannedStmt *pstmt,
 	if (IsA(parsetree, TruncateStmt))
 	{
 		ErrorIfUnsupportedTruncateStmt((TruncateStmt *) parsetree);
+
+		if (ShouldExecuteTruncateStmtSequential((TruncateStmt *) parsetree))
+		{
+			SetLocalMultiShardModifyModeToSequential();
+		}
 	}
 
 	/* only generate worker DDLJobs if propagation is enabled */
@@ -3795,6 +3806,13 @@ ProcessDropTableStmt(DropStmt *dropTableStatement)
 }
 
 
+/*
+ * ShouldExecuteAlterTableSequentially checks if the given ALTER TABLE
+ * statements should be executed sequentially if there is a foreign
+ * constraint from a distributed table to a reference table.
+ * In case of a column related ALTER TABLE operation, we check explicitly
+ * if there is a foreign constraint on this column from/to a reference table.
+ */
 static bool
 ShouldExecuteAlterTableSequentially(Oid relationId, AlterTableCmd *command)
 {
@@ -3823,6 +3841,37 @@ ShouldExecuteAlterTableSequentially(Oid relationId, AlterTableCmd *command)
 
 		if (ForeignKeyExistsToReferenceTableOnColumn(affectedColumnName,
 													 relationId))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+
+/*
+ * CheckIfNeedsToRunSequentialTruncateStmt decides if the TRUNCATE stmt needs
+ * to run sequential. If so, it calls SetLocalMultiShardModifyModeToSequential().
+ *
+ * If a reference table which has a foreign key from a distributed table is truncated
+ * we need to execute the command sequentially to avoid self-deadlock.
+ */
+static bool
+ShouldExecuteTruncateStmtSequential(TruncateStmt *command)
+{
+	List *relationList = command->relations;
+	ListCell *relationCell = NULL;
+	bool failOK = false;
+
+	foreach(relationCell, relationList)
+	{
+		RangeVar *rangeVar = (RangeVar *) lfirst(relationCell);
+		Oid relationId = RangeVarGetRelid(rangeVar, NoLock, failOK);
+
+		if (IsDistributedTable(relationId) &&
+			PartitionMethod(relationId) == DISTRIBUTE_BY_NONE &&
+			TableReferenced(relationId))
 		{
 			return true;
 		}
