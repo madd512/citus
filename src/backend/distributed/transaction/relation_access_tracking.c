@@ -90,7 +90,7 @@ ResetRelationAccessHash()
  * Allocate RelationAccessHash.
  */
 void
-AllocateRelationAccessHash()
+AllocateRelationAccessHash(void)
 {
 	HASHCTL info;
 	uint32 hashFlags = 0;
@@ -137,17 +137,20 @@ AssociatePlacementAccessWithRelation(ShardPlacement *placement,
 		ShardInterval *shardInterval = LoadShardInterval(shardId);
 		int shardIndex = shardInterval->shardIndex;
 		ListCell *partitionCell = NULL;
+		ShardPlacement *partitionInitialShardPlacement = NULL;
 
 		foreach(partitionCell, partitionList)
 		{
 			Oid partitionOid = lfirst_oid(partitionCell);
 			uint64 partitionShardId = INVALID_SHARD_ID;
 			List *partitionShardPlacementList = NIL;
-			ListCell *partitionCell = NULL;
+			ShardPlacement *partitionInitialShardPlacement = NULL;
 
 			/*
 			 * During create_distributed_table, the partitions may not
-			 * have been created yet.
+			 * have been created yet and so there are no placements yet.
+			 * We're already going to register them when we distribute
+			 * the partitions.
 			 */
 			if (!IsDistributedTable(partitionOid))
 			{
@@ -157,15 +160,16 @@ AssociatePlacementAccessWithRelation(ShardPlacement *placement,
 			partitionShardId =
 				ColocatedShardIdInRelation(partitionOid, shardIndex);
 			partitionShardPlacementList = ShardPlacementList(partitionShardId);
+			partitionInitialShardPlacement =
+				(ShardPlacement *) linitial(partitionShardPlacementList);
 
-			foreach(partitionCell, partitionShardPlacementList)
-			{
-				ShardPlacement *shardPlacement =
-					(ShardPlacement *) lfirst(partitionCell);
-
-				/* recursively record all relation accesses of its partitions */
-				AssociatePlacementAccessWithRelation(shardPlacement, accessType);
-			}
+			/*
+			 * Recursively record all relation accesses of its partitions. Note that
+			 * we prefer to recursively call AssociatePlacementAccessWithRelation()
+			 * to support multi-level partitioned tables.
+			 */
+			AssociatePlacementAccessWithRelation(partitionInitialShardPlacement,
+												 accessType);
 		}
 	}
 	else if (PartitionTableNoLock(relationId))
