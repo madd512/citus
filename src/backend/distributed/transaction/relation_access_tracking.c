@@ -137,7 +137,6 @@ AssociatePlacementAccessWithRelation(ShardPlacement *placement,
 		ShardInterval *shardInterval = LoadShardInterval(shardId);
 		int shardIndex = shardInterval->shardIndex;
 		ListCell *partitionCell = NULL;
-		ShardPlacement *partitionInitialShardPlacement = NULL;
 
 		foreach(partitionCell, partitionList)
 		{
