@@ -108,6 +108,38 @@ get_foreign_key_relation(PG_FUNCTION_ARGS)
 
 
 /*
+ * TODO: add comment
+ */
+void
+DestroyForeignKeyRelationGraph(void)
+{
+
+	if (frelGraph == NULL)
+	{
+		return;
+	}
+
+	hash_destroy(frelGraph);
+
+	frelGraph = NULL;
+}
+
+bool RelationIsPartOfForeignKey(Oid relationId)
+{
+	bool isFound = false;
+
+	if (frelGraph == NULL)
+	{
+		return false;
+	}
+
+	 hash_search(frelGraph->nodeMap, &relationId,
+												HASH_FIND, &isFound);
+
+	 return isFound;
+}
+
+/*
  * CreateForeignKeyRelationGraph creates the foreign key relation graph using
  * foreign constraint provided by pg_constraint metadata table.
  */
