@@ -560,5 +560,17 @@ CREATE TABLE self_referencing_reference_table(
 SELECT create_reference_table('self_referencing_reference_table');
 ALTER TABLE self_referencing_reference_table ADD CONSTRAINT fk FOREIGN KEY(id, other_column_ref) REFERENCES self_referencing_reference_table(id, other_column);
 
+-- test foreign key in between partitions of a partitioned table
+CREATE TABLE partitioning_test(id int, time date) PARTITION BY RANGE (time);
+CREATE TABLE partitioning_test_2009 PARTITION OF partitioning_test FOR VALUES FROM ('2009-01-01') TO ('2010-01-01');
+CREATE TABLE partitioning_test_2010 PARTITION OF partitioning_test FOR VALUES FROM ('2010-01-01') TO ('2011-01-01');
+CREATE TABLE partitioning_test_2011 PARTITION OF partitioning_test FOR VALUES FROM ('2011-01-01') TO ('2012-01-01');
+ALTER TABLE partitioning_test_2009 ADD CONSTRAINT pkey PRIMARY KEY (id);
+ALTER TABLE partitioning_test_2011 ADD CONSTRAINT fkey FOREIGN KEY (id) REFERENCES partitioning_test_2009;
+SELECT create_distributed_table('partitioning_test', 'id');
+CREATE TABLE referencing_table(id int, time date, FOREIGN KEY (id) REFERENCES partitioning_test_2009(id));
+INSERT INTO referencing_table VALUES (0,NULL), (1,NULL);
+INSERT INTO partitioning_test VALUES (0,'2011-02-02'), (1,'2011-03-03');
+
 -- we no longer need those tables
 DROP TABLE referenced_by_reference_table, references_to_reference_table, reference_table, reference_table_second, referenced_local_table, self_referencing_reference_table;

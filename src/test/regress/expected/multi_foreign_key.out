@@ -937,5 +937,26 @@ SELECT create_reference_table('self_referencing_reference_table');
 ALTER TABLE self_referencing_reference_table ADD CONSTRAINT fk FOREIGN KEY(id, other_column_ref) REFERENCES self_referencing_reference_table(id, other_column);
 ERROR:  cannot create foreign key constraint because reference tables are not supported as the referencing table of a foreign constraint
 DETAIL:  Reference tables are only supported as the referenced table of a foreign key when the referencing table is a hash distributed table
+-- test foreign key in between partitions of a partitioned table
+CREATE TABLE partitioning_test(id int, time date) PARTITION BY RANGE (time);
+CREATE TABLE partitioning_test_2009 PARTITION OF partitioning_test FOR VALUES FROM ('2009-01-01') TO ('2010-01-01');
+CREATE TABLE partitioning_test_2010 PARTITION OF partitioning_test FOR VALUES FROM ('2010-01-01') TO ('2011-01-01');
+CREATE TABLE partitioning_test_2011 PARTITION OF partitioning_test FOR VALUES FROM ('2011-01-01') TO ('2012-01-01');
+ALTER TABLE partitioning_test_2009 ADD CONSTRAINT pkey PRIMARY KEY (id);
+ALTER TABLE partitioning_test_2011 ADD CONSTRAINT fkey FOREIGN KEY (id) REFERENCES partitioning_test_2009;
+SELECT create_distributed_table('partitioning_test', 'id');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+CREATE TABLE referencing_table(id int, time date, FOREIGN KEY (id) REFERENCES partitioning_test_2009(id));
+INSERT INTO referencing_table VALUES (0,NULL), (1,NULL);
+ERROR:  insert or update on table "referencing_table" violates foreign key constraint "referencing_table_id_fkey"
+DETAIL:  Key (id)=(0) is not present in table "partitioning_test_2009".
+INSERT INTO partitioning_test VALUES (0,'2011-02-02'), (1,'2011-03-03');
+ERROR:  insert or update on table "partitioning_test_2011_1350673" violates foreign key constraint "fkey_1350673"
+DETAIL:  Key (id)=(1) is not present in table "partitioning_test_2009_1350665".
+CONTEXT:  while executing command on localhost:57637
 -- we no longer need those tables
 DROP TABLE referenced_by_reference_table, references_to_reference_table, reference_table, reference_table_second, referenced_local_table, self_referencing_reference_table;

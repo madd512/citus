@@ -1763,9 +1763,117 @@ SELECT * FROM test_table_1;
 (3 rows)
 
 DROP TABLE test_table_1, test_table_2;
+-- NOTE: Postgres does not support foreign keys on partitioned tables currently.
+-- However, we can create foreign keys to/from the partitions themselves.
+-- The following tests chech if we create the foreign constraints in partitions properly.
+CREATE TABLE referenced_table(id int PRIMARY KEY, test_column int);
+CREATE TABLE referencing_table(id int, value_1 int) PARTITION BY RANGE (value_1);
+CREATE TABLE referencing_table_0 PARTITION OF referencing_table FOR VALUES FROM (0) TO (2);
+CREATE TABLE referencing_table_2 PARTITION OF referencing_table FOR VALUES FROM (2) TO (4);
+CREATE TABLE referencing_table_4 PARTITION OF referencing_table FOR VALUES FROM (4) TO (6);
+-- partitioned tables are not supported as reference tables
+select create_reference_table('referencing_table');
+ERROR:  distributing partitioned tables in only supported for hash-distributed tables
+-- partitioned tables are supported as hash distributed table
+SELECT create_reference_table('referenced_table');
+ create_reference_table 
+------------------------
+ 
+(1 row)
+
+SELECT create_distributed_table('referencing_table', 'id');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+-- add foreign constraints in between partitions
+ALTER TABLE referencing_table_0 ADD CONSTRAINT pkey PRIMARY KEY (id);
+ALTER TABLE referencing_table_4 ADD CONSTRAINT fkey FOREIGN KEY (id) REFERENCES referencing_table_0;
+-- add foreign constraint from a partition to reference table
+ALTER TABLE referencing_table_4 ADD CONSTRAINT fkey_to_ref FOREIGN KEY (value_1) REFERENCES referenced_table;
+-- should fail since the data will flow to partitioning_test_4 and it has a foreign constraint to partitioning_test_0 on id column
+INSERT INTO referencing_table VALUES (0, 5);
+ERROR:  insert or update on table "referencing_table_4_7000516" violates foreign key constraint "fkey_7000516"
+DETAIL:  Key (id)=(0) is not present in table "referencing_table_0_7000500".
+CONTEXT:  while executing command on localhost:57638
+-- should succeed on partitioning_test_0
+INSERT INTO referencing_table VALUES (0, 1);
+SELECT * FROM referencing_table;
+ id | value_1 
+----+---------
+  0 |       1
+(1 row)
+
+-- should fail since partitioning_test_4 has foreign constraint to referenced_table on value_1 column
+INSERT INTO referencing_table VALUES (0, 5);
+ERROR:  insert or update on table "referencing_table_4_7000516" violates foreign key constraint "fkey_to_ref_7000516"
+DETAIL:  Key (value_1)=(5) is not present in table "referenced_table_7000488".
+CONTEXT:  while executing command on localhost:57638
+INSERT INTO referenced_table VALUES(5,5);
+-- should succeed since both of the foreign constraints are positive
+INSERT INTO referencing_table VALUES (0, 5);
+DROP TABLE referenced_table, referencing_table;
+-- Check if MX works properly
+SET citus.replication_model TO streaming;
+SELECT start_metadata_sync_to_node('localhost', :worker_1_port);
+ start_metadata_sync_to_node 
+-----------------------------
+ 
+(1 row)
+
+CREATE TABLE referenced_table(test_column int, test_column2 int, PRIMARY KEY(test_column));
+CREATE TABLE referenced_table2(test_column int, test_column2 int, PRIMARY KEY(test_column2));
+CREATE TABLE referencing_table(id int, ref_id int);
+ALTER TABLE referencing_table ADD CONSTRAINT fkey_ref FOREIGN KEY (id) REFERENCES referenced_table(test_column) ON DELETE CASCADE;
+ALTER TABLE referencing_table ADD CONSTRAINT foreign_key_2 FOREIGN KEY (id) REFERENCES referenced_table2(test_column2) ON DELETE CASCADE;
+SELECT create_reference_table('referenced_table');
+ create_reference_table 
+------------------------
+ 
+(1 row)
+
+SELECT create_reference_table('referenced_table2');
+ create_reference_table 
+------------------------
+ 
+(1 row)
+
+SELECT create_distributed_table('referencing_table', 'id');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+SELECT * FROM table_fkeys_in_workers WHERE relid LIKE 'fkey_reference_table.%' AND refd_relid LIKE 'fkey_reference_table.%' ORDER BY 1, 2;
+         name          |                     relid                      |                   refd_relid                   
+-----------------------+------------------------------------------------+------------------------------------------------
+ fkey_ref              | fkey_reference_table.referencing_table         | fkey_reference_table.referenced_table
+ fkey_ref_7000523      | fkey_reference_table.referencing_table_7000523 | fkey_reference_table.referenced_table_7000521
+ fkey_ref_7000524      | fkey_reference_table.referencing_table_7000524 | fkey_reference_table.referenced_table_7000521
+ fkey_ref_7000525      | fkey_reference_table.referencing_table_7000525 | fkey_reference_table.referenced_table_7000521
+ fkey_ref_7000526      | fkey_reference_table.referencing_table_7000526 | fkey_reference_table.referenced_table_7000521
+ fkey_ref_7000527      | fkey_reference_table.referencing_table_7000527 | fkey_reference_table.referenced_table_7000521
+ fkey_ref_7000528      | fkey_reference_table.referencing_table_7000528 | fkey_reference_table.referenced_table_7000521
+ fkey_ref_7000529      | fkey_reference_table.referencing_table_7000529 | fkey_reference_table.referenced_table_7000521
+ fkey_ref_7000530      | fkey_reference_table.referencing_table_7000530 | fkey_reference_table.referenced_table_7000521
+ foreign_key_2         | fkey_reference_table.referencing_table         | fkey_reference_table.referenced_table2
+ foreign_key_2_7000523 | fkey_reference_table.referencing_table_7000523 | fkey_reference_table.referenced_table2_7000522
+ foreign_key_2_7000524 | fkey_reference_table.referencing_table_7000524 | fkey_reference_table.referenced_table2_7000522
+ foreign_key_2_7000525 | fkey_reference_table.referencing_table_7000525 | fkey_reference_table.referenced_table2_7000522
+ foreign_key_2_7000526 | fkey_reference_table.referencing_table_7000526 | fkey_reference_table.referenced_table2_7000522
+ foreign_key_2_7000527 | fkey_reference_table.referencing_table_7000527 | fkey_reference_table.referenced_table2_7000522
+ foreign_key_2_7000528 | fkey_reference_table.referencing_table_7000528 | fkey_reference_table.referenced_table2_7000522
+ foreign_key_2_7000529 | fkey_reference_table.referencing_table_7000529 | fkey_reference_table.referenced_table2_7000522
+ foreign_key_2_7000530 | fkey_reference_table.referencing_table_7000530 | fkey_reference_table.referenced_table2_7000522
+(18 rows)
+
 DROP SCHEMA fkey_reference_table CASCADE;
-NOTICE:  drop cascades to 3 other objects
+NOTICE:  drop cascades to 6 other objects
 DETAIL:  drop cascades to type foreign_details
 drop cascades to view table_fkeys_in_workers
 drop cascades to type composite
+drop cascades to table referenced_table
+drop cascades to table referenced_table2
+drop cascades to table referencing_table
 SET search_path TO DEFAULT;
