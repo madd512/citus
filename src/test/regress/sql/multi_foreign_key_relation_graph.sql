@@ -2,10 +2,15 @@ SET citus.next_shard_id TO 3000000;
 SET client_min_messages TO LOG;
 SET citus.shard_replication_factor TO 1;
 
-CREATE FUNCTION get_foreign_key_relation(Oid, bool)
+CREATE FUNCTION get_referencing_relation_id_list(Oid)
     RETURNS SETOF Oid
     LANGUAGE C STABLE STRICT
-    AS 'citus', $$get_foreign_key_relation$$;
+    AS 'citus', $$get_referencing_relation_id_list$$;
+
+CREATE FUNCTION get_referenced_relation_id_list(Oid)
+    RETURNS SETOF Oid
+    LANGUAGE C STABLE STRICT
+    AS 'citus', $$get_referenced_relation_id_list$$;
 
 -- Complex case with non-distributed tables
 CREATE TABLE tt1(id int PRIMARY KEY);
@@ -34,24 +39,24 @@ SELECT create_distributed_table('dtt2','id');
 CREATE TABLE dtt3(id int PRIMARY KEY REFERENCES dtt2(id));
 SELECT create_distributed_table('dtt3','id');
 
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt1'::regclass, TRUE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt2'::regclass, TRUE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt3'::regclass, TRUE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt4'::regclass, TRUE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt5'::regclass, TRUE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt6'::regclass, TRUE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt7'::regclass, TRUE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt8'::regclass, TRUE) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('tt1'::regclass) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('tt2'::regclass) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('tt3'::regclass) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('tt4'::regclass) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('tt5'::regclass) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('tt6'::regclass) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('tt7'::regclass) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('tt8'::regclass) ORDER BY 1;
 
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt1'::regclass, FALSE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt2'::regclass, FALSE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt3'::regclass, FALSE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt4'::regclass, FALSE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt5'::regclass, FALSE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt6'::regclass, FALSE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt7'::regclass, FALSE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('tt8'::regclass, FALSE) ORDER BY 1;
+SELECT get_referenced_relation_id_list::regclass FROM get_referenced_relation_id_list('tt1'::regclass) ORDER BY 1;
+SELECT get_referenced_relation_id_list::regclass FROM get_referenced_relation_id_list('tt2'::regclass) ORDER BY 1;
+SELECT get_referenced_relation_id_list::regclass FROM get_referenced_relation_id_list('tt3'::regclass) ORDER BY 1;
+SELECT get_referenced_relation_id_list::regclass FROM get_referenced_relation_id_list('tt4'::regclass) ORDER BY 1;
+SELECT get_referenced_relation_id_list::regclass FROM get_referenced_relation_id_list('tt5'::regclass) ORDER BY 1;
+SELECT get_referenced_relation_id_list::regclass FROM get_referenced_relation_id_list('tt6'::regclass) ORDER BY 1;
+SELECT get_referenced_relation_id_list::regclass FROM get_referenced_relation_id_list('tt7'::regclass) ORDER BY 1;
+SELECT get_referenced_relation_id_list::regclass FROM get_referenced_relation_id_list('tt8'::regclass) ORDER BY 1;
 
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('dtt1'::regclass, TRUE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('dtt2'::regclass, TRUE) ORDER BY 1;
-SELECT get_foreign_key_relation::regclass FROM get_foreign_key_relation('dtt3'::regclass, TRUE) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('dtt1'::regclass) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('dtt2'::regclass) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('dtt3'::regclass) ORDER BY 1;

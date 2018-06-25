@@ -48,21 +48,22 @@ typedef struct FRelNode
 
 static FRelGraph *frelGraph = NULL;
 
+static void CreateForeignKeyRelationGraph(void);
 static void CreateTransitivityMatrix(void);
 static void InitializeIndexToOidMapping(void);
+static List *GetReferencedRelationIdHelper(Oid relationId, bool isAffecting);
 
 /* this function is only exported in the regression tests */
-PG_FUNCTION_INFO_V1(get_foreign_key_relation);
+PG_FUNCTION_INFO_V1(get_referencing_relation_id_list);
+PG_FUNCTION_INFO_V1(get_referenced_relation_id_list);
 
 /*
- * get_foreign_key_relation returns the list of table oids that is referenced
+ * get_referencing_relation_id_list returns the list of table oids that is referencing
  * by given oid recursively. It uses the foreign key relation graph if it exists
- * in the cache, otherwise forms it up once. Second argument, which is a boolean,
- * set the direction of reference. True means that the function will return the
- * Oids of relations referenced by given Oid. False means the opposite direction.
+ * in the cache, otherwise forms it up once.
  */
 Datum
-get_foreign_key_relation(PG_FUNCTION_ARGS)
+get_referencing_relation_id_list(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *functionContext = NULL;
 	ListCell *foreignRelationCell = NULL;
@@ -73,8 +74,7 @@ get_foreign_key_relation(PG_FUNCTION_ARGS)
 	if (SRF_IS_FIRSTCALL())
 	{
 		Oid relationId = PG_GETARG_OID(0);
-		bool isReferencing = PG_GETARG_BOOL(1);
-		List *refList = GetForeignKeyRelation(relationId, isReferencing);
+		List *refList = ReferencingRelationIdList(relationId);
 
 		/* create a function context for cross-call persistence */
 		functionContext = SRF_FIRSTCALL_INIT();
@@ -108,10 +108,160 @@ get_foreign_key_relation(PG_FUNCTION_ARGS)
 
 
 /*
+ * get_referenced_relation_id_list returns the list of table oids that is referenced
+ * by given oid recursively. It uses the foreign key relation graph if it exists
+ * in the cache, otherwise forms it up once.
+ */
+Datum
+get_referenced_relation_id_list(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *functionContext = NULL;
+	ListCell *foreignRelationCell = NULL;
+
+	CheckCitusVersion(ERROR);
+
+	/* for the first we call this UDF, we need to populate the result to return set */
+	if (SRF_IS_FIRSTCALL())
+	{
+		Oid relationId = PG_GETARG_OID(0);
+		List *refList = ReferencedRelationIdList(relationId);
+
+		/* create a function context for cross-call persistence */
+		functionContext = SRF_FIRSTCALL_INIT();
+
+		foreignRelationCell = list_head(refList);
+		functionContext->user_fctx = foreignRelationCell;
+	}
+
+	/*
+	 * On every call to this function, we get the current position in the
+	 * statement list. We then iterate to the next position in the list and
+	 * return the current statement, if we have not yet reached the end of
+	 * list.
+	 */
+	functionContext = SRF_PERCALL_SETUP();
+
+	foreignRelationCell = (ListCell *) functionContext->user_fctx;
+	if (foreignRelationCell != NULL)
+	{
+		Oid refId = lfirst_oid(foreignRelationCell);
+
+		functionContext->user_fctx = lnext(foreignRelationCell);
+
+		SRF_RETURN_NEXT(functionContext, PointerGetDatum(refId));
+	}
+	else
+	{
+		SRF_RETURN_DONE(functionContext);
+	}
+}
+
+
+/*
+ * ReferencedRelationIdList is a wrapper function around GetRefenceRelationIdHelper
+ * to get list of relation IDs which are referenced by the given relation id.
+ * Note that, if relation A is referenced by relation B and relation B is referenced
+ * by relation C, then the result list for relation A consists of the relation
+ * IDs of relation B and relation C.
+ */
+List *
+ReferencedRelationIdList(Oid relationId)
+{
+	return GetReferencedRelationIdHelper(relationId, false);
+}
+
+
+/*
+ * ReferencingRelationIdList is a wrapper function around GetRefenceRelationIdHelper
+ * to get list of relation IDs which are referencing by the given relation id.
+ * Note that, if relation A is referenced by relation B and relation B is referenced
+ * by relation C, then the result list for relation C consists of the relation
+ * IDs of relation A and relation B.
+ */
+List *
+ReferencingRelationIdList(Oid relationId)
+{
+	return GetReferencedRelationIdHelper(relationId, true);
+}
+
+
+/*
+ * GetReferencedRelationIdHelper returns the list of oids affected or affecting
+ * given relation id. It uses the transitivity matrix which is computed once in
+ * a session. It is a helper function for providing results to public functions
+ * ReferencedRelationIdList and ReferencingRelationIdList.
+ */
+static List *
+GetReferencedRelationIdHelper(Oid relationId, bool isAffecting)
+{
+	List *foreignKeyList = NIL;
+	bool isFound = false;
+	FRelNode *relationNode = NULL;
+	uint32 relationIndex = -1;
+	MemoryContext oldContext = MemoryContextSwitchTo(CacheMemoryContext);
+
+	CreateForeignKeyRelationGraph();
+	relationNode = (FRelNode *) hash_search(frelGraph->nodeMap, &relationId,
+											HASH_FIND, &isFound);
+	if (!isFound)
+	{
+		/*
+		 * If there is no node with the given relation id, that means given table
+		 * does not referencing and does not referenced by any table
+		 */
+		return NIL;
+	}
+	else
+	{
+		/*
+		 * Create the returning list according to the direction of reference. We
+		 * utilize indexes of each relation node (which has relation id as an
+		 * attribute) to get result from transitivity matrix easily.
+		 */
+		relationIndex = relationNode->index;
+		if (isAffecting)
+		{
+			uint32 tableCounter = 0;
+
+			while (tableCounter < frelGraph->nodeCount)
+			{
+				if (frelGraph->transitivityMatrix[relationIndex][tableCounter])
+				{
+					Oid referredTableOid = frelGraph->indexToOidArray[tableCounter];
+					foreignKeyList = lappend_oid(foreignKeyList, referredTableOid);
+				}
+
+				tableCounter += 1;
+			}
+		}
+		else
+		{
+			uint32 tableCounter = 0;
+
+			while (tableCounter < frelGraph->nodeCount)
+			{
+				if (frelGraph->transitivityMatrix[tableCounter][relationIndex])
+				{
+					Oid referringTableOid = frelGraph->indexToOidArray[tableCounter];
+					foreignKeyList = lappend_oid(foreignKeyList, referringTableOid);
+				}
+
+				tableCounter += 1;
+			}
+		}
+	}
+
+	MemoryContextSwitchTo(oldContext);
+
+	return foreignKeyList;
+}
+
+
+/*
  * CreateForeignKeyRelationGraph creates the foreign key relation graph using
  * foreign constraint provided by pg_constraint metadata table.
  */
-void
+static void
 CreateForeignKeyRelationGraph()
 {
 	SysScanDesc fkeyScan;
@@ -308,7 +458,7 @@ CreateTransitivityMatrix()
 	hash_seq_init(&status, frelGraph->nodeMap);
 
 	/*
-	 * Create the initial adjacency matrix, that will be transformed to
+	 * Create the initial adjacency matrix, that will be transformed to the
 	 * transitivity matrix dynamically.
 	 */
 	while ((frelNode = (FRelNode *) hash_seq_search(&status)) != 0)
@@ -361,73 +511,41 @@ CreateTransitivityMatrix()
 
 
 /*
- * GetForeignKeyRelation returns the list of oids affected or affecting given
- * relation id. It uses the transitivity matrix which is computed once in a
- * session.
+ * ClearForeignKeyRelationGraph clear all the allocated memory obtained for
+ * foreign key relation graph.
  */
-List *
-GetForeignKeyRelation(Oid relationId, bool isAffecting)
+void
+ClearForeignKeyRelationGraph()
 {
-	List *foreignKeyList = NIL;
-	bool isFound = false;
-	FRelNode *relationNode = NULL;
-	uint32 relationIndex = -1;
 	MemoryContext oldContext = MemoryContextSwitchTo(CacheMemoryContext);
+	HASH_SEQ_STATUS status;
+	FRelNode *frelNode = NULL;
+	int indexCounter = -1;
 
-	CreateForeignKeyRelationGraph();
-	relationNode = (FRelNode *) hash_search(frelGraph->nodeMap, &relationId,
-											HASH_FIND, &isFound);
-	if (!isFound)
+	/* free the transitivity matrix of foreign key relation graph*/
+	for(indexCounter = 0 ; indexCounter < frelGraph->nodeCount ; indexCounter++)
 	{
-		/*
-		 * If there is no node with the given relation id, that means given table
-		 * does not referencing and does not referenced by any table
-		 */
-		return NIL;
+		pfree(frelGraph->transitivityMatrix[indexCounter]);
 	}
-	else
+	pfree(frelGraph->transitivityMatrix);
+
+	/* free each relation node */
+	hash_seq_init(&status, frelGraph->nodeMap);
+	while ((frelNode = (FRelNode *) hash_seq_search(&status)) != 0)
 	{
-		/*
-		 * Create the returning list according to the direction of reference. We
-		 * utilize indexes of each relation node (which has relation id as an
-		 * attribute) to get result from transitivity matrix easily.
-		 */
-		relationIndex = relationNode->index;
-		if (isAffecting)
-		{
-			uint32 tableCounter = 0;
-
-			while (tableCounter < frelGraph->nodeCount)
-			{
-				if (frelGraph->transitivityMatrix[relationIndex][tableCounter])
-				{
-					Oid referredTableOid = frelGraph->indexToOidArray[tableCounter];
-					foreignKeyList = lappend_oid(foreignKeyList, referredTableOid);
-				}
-
-				tableCounter += 1;
-			}
-		}
-		else
-		{
-			uint32 tableCounter = 0;
-
-			while (tableCounter < frelGraph->nodeCount)
-			{
-				if (frelGraph->transitivityMatrix[tableCounter][relationIndex])
-				{
-					Oid referringTableOid = frelGraph->indexToOidArray[tableCounter];
-					foreignKeyList = lappend_oid(foreignKeyList, referringTableOid);
-				}
-
-				tableCounter += 1;
-			}
-		}
+		pfree(frelNode);
 	}
+
+	/* free the index-oid mapping array */
+	pfree(frelGraph->indexToOidArray);
+
+	/* destroy the hash */
+	hash_destroy(frelGraph->nodeMap);
+
+	/* clear the graph */
+	pfree(frelGraph);
 
 	MemoryContextSwitchTo(oldContext);
-
-	return foreignKeyList;
 }
 
 
