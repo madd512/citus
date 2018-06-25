@@ -35,6 +35,7 @@ typedef struct FRelGraph
 {
 	HTAB *nodeMap;
 	int nodeCount;
+	bool validGraph;
 	Oid *indexToOidArray;
 	bool **transitivityMatrix;
 }FRelGraph;
@@ -158,6 +159,37 @@ get_referenced_relation_id_list(PG_FUNCTION_ARGS)
 
 
 /*
+ * IsForeignKeyGraphValid check whether there is a valid graph.
+ */
+bool
+IsForeignKeyGraphValid()
+{
+	if (frelGraph != NULL && frelGraph->validGraph)
+	{
+		return true;
+	}
+
+	return false;
+}
+
+
+/*
+ * ConnectedComponentOfRelationId returns the list of Oids which are in the
+ * same connected component with given relation id.
+ */
+List *
+ConnectedComponentOfRelationId(Oid relationId)
+{
+	List *referencedRelationIdList = ReferencedRelationIdList(relationId);
+	List *referencingRelationIdList = ReferencingRelationIdList(relationId);
+	List *connectedComponentOidList = list_concat_unique_oid(referencedRelationIdList,
+													 	  referencingRelationIdList);
+
+	return connectedComponentOidList;
+}
+
+
+/*
  * ReferencedRelationIdList is a wrapper function around GetRefenceRelationIdHelper
  * to get list of relation IDs which are referenced by the given relation id.
  * Note that, if relation A is referenced by relation B and relation B is referenced
@@ -209,6 +241,7 @@ GetReferencedRelationIdHelper(Oid relationId, bool isAffecting)
 		 * If there is no node with the given relation id, that means given table
 		 * does not referencing and does not referenced by any table
 		 */
+		MemoryContextSwitchTo(oldContext);
 		return NIL;
 	}
 	else
@@ -269,26 +302,30 @@ CreateForeignKeyRelationGraph()
 	HASHCTL info;
 	uint32 hashFlags = 0;
 	Relation fkeyRel;
-	uint32 curIndex = 0;
+	int curIndex = 0;
 
 	/* if we have already created the graph, use it */
-	if (frelGraph != NULL)
+	if (IsForeignKeyGraphValid())
 	{
 		return;
 	}
 
-	frelGraph = (FRelGraph *) palloc(sizeof(FRelGraph));
+	else if(frelGraph == NULL)
+	{
+		frelGraph = (FRelGraph *) palloc(sizeof(FRelGraph));
+		frelGraph->validGraph = false;
 
-	/* create (oid) -> [FRelNode] hash */
-	memset(&info, 0, sizeof(info));
-	info.keysize = sizeof(Oid);
-	info.entrysize = sizeof(FRelNode);
-	info.hash = oid_hash;
-	info.hcxt = CurrentMemoryContext;
-	hashFlags = (HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+		/* create (oid) -> [FRelNode] hash */
+		memset(&info, 0, sizeof(info));
+		info.keysize = sizeof(Oid);
+		info.entrysize = sizeof(FRelNode);
+		info.hash = oid_hash;
+		info.hcxt = CurrentMemoryContext;
+		hashFlags = (HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 
-	frelGraph->nodeMap = hash_create("foreign key relation map (oid)",
-									 64 * 32, &info, hashFlags);
+		frelGraph->nodeMap = hash_create("foreign key relation map (oid)",
+										 64 * 32, &info, hashFlags);
+	}
 
 	fkeyRel = heap_open(ConstraintRelationId, AccessShareLock);
 	fkeyScan = systable_beginscan(fkeyRel, ConstraintRelidIndexId, true,
@@ -388,20 +425,25 @@ CreateForeignKeyRelationGraph()
 		}
 	}
 
+
 	frelGraph->nodeCount = curIndex;
 
-	/*
-	 * Initialize index to oid mapping, that is necessary for accessing node
-	 * elements in O(1) time.
-	 */
-	InitializeIndexToOidMapping();
+	if (frelGraph->nodeCount > 0)
+	{
+		/*
+		 * Initialize index to oid mapping, that is necessary for accessing node
+		 * elements in O(1) time.
+		 */
+		InitializeIndexToOidMapping();
 
-	/*
-	 * Transitivity matrix will be used to find affected and affecting relations
-	 * for foreign key relation graph.
-	 */
-	CreateTransitivityMatrix();
+		/*
+		 * Transitivity matrix will be used to find affected and affecting relations
+		 * for foreign key relation graph.
+		 */
+		CreateTransitivityMatrix();
+	}
 
+	frelGraph->validGraph = true;
 	systable_endscan(fkeyScan);
 	heap_close(fkeyRel, AccessShareLock);
 }
@@ -518,32 +560,34 @@ void
 ClearForeignKeyRelationGraph()
 {
 	MemoryContext oldContext = MemoryContextSwitchTo(CacheMemoryContext);
-	HASH_SEQ_STATUS status;
-	FRelNode *frelNode = NULL;
-	int indexCounter = -1;
-
-	/* free the transitivity matrix of foreign key relation graph*/
-	for(indexCounter = 0 ; indexCounter < frelGraph->nodeCount ; indexCounter++)
+	int indexCounter = 0;
+	if (frelGraph == NULL)
 	{
-		pfree(frelGraph->transitivityMatrix[indexCounter]);
-	}
-	pfree(frelGraph->transitivityMatrix);
-
-	/* free each relation node */
-	hash_seq_init(&status, frelGraph->nodeMap);
-	while ((frelNode = (FRelNode *) hash_seq_search(&status)) != 0)
-	{
-		pfree(frelNode);
+		return;
 	}
 
-	/* free the index-oid mapping array */
-	pfree(frelGraph->indexToOidArray);
+	/*
+	 * Free the transitivity matrix and index-oid mapping array of foreign key
+	 * relation graph. If graph doesn't have any node, then we do not have neither
+	 * of them.
+	 */
+	if (frelGraph->nodeCount > 0)
+	{
+		for(indexCounter = 0 ; indexCounter < frelGraph->nodeCount ; indexCounter++)
+		{
+			pfree(frelGraph->transitivityMatrix[indexCounter]);
+		}
 
-	/* destroy the hash */
+		pfree(frelGraph->indexToOidArray);
+	}
+
+	/* free the map holding relation nodes */
 	hash_destroy(frelGraph->nodeMap);
 
 	/* clear the graph */
 	pfree(frelGraph);
+
+	frelGraph = NULL;
 
 	MemoryContextSwitchTo(oldContext);
 }

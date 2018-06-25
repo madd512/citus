@@ -22,8 +22,10 @@ extern void ErrorIfUnsupportedForeignConstraint(Relation relation, char
 												colocationId);
 extern List * GetTableForeignConstraintCommands(Oid relationId);
 extern bool TableReferenced(Oid relationId);
-extern List *ReferencedRelationIdList(Oid relationId);
-extern List *ReferencingRelationIdList(Oid relationId);
+extern List * ReferencedRelationIdList(Oid relationId);
+extern List * ReferencingRelationIdList(Oid relationId);
+extern bool IsForeignKeyGraphValid(void);
+extern List * ConnectedComponentOfRelationId(Oid relationId);
 extern void ClearForeignKeyRelationGraph(void);
 
 #endif
