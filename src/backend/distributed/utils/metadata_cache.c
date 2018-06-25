@@ -29,6 +29,7 @@
 #include "distributed/colocation_utils.h"
 #include "distributed/connection_management.h"
 #include "distributed/citus_ruleutils.h"
+#include "distributed/foreign_constraint.h"
 #include "distributed/master_metadata_utility.h"
 #include "distributed/metadata_cache.h"
 #include "distributed/multi_logical_optimizer.h"
@@ -959,6 +960,11 @@ BuildDistTableCacheEntry(DistTableCacheEntry *cacheEntry)
 	{
 		cacheEntry->hashFunction = NULL;
 	}
+
+	cacheEntry->referencedRelationsViaForeignKey =
+		GetForeignKeyRelation(cacheEntry->relationId, true);
+	cacheEntry->referencingRelationsViaForeignKey =
+			GetForeignKeyRelation(cacheEntry->relationId, false);
 
 	heap_close(pgDistPartition, NoLock);
 }
@@ -2886,6 +2892,8 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 		{
 			cacheEntry->isValid = false;
 		}
+
+		DestroyForeignKeyRelationGraph();
 	}
 	else
 	{
@@ -2898,6 +2906,9 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 		{
 			cacheEntry->isValid = false;
 		}
+
+		if (RelationIsPartOfForeignKey(relationId))
+			DestroyForeignKeyRelationGraph();
 	}
 
 	/*
