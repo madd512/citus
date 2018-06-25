@@ -52,7 +52,7 @@ static FRelGraph *frelGraph = NULL;
 static void CreateForeignKeyRelationGraph(void);
 static void CreateTransitivityMatrix(void);
 static void InitializeIndexToOidMapping(void);
-static List *GetReferencedRelationIdHelper(Oid relationId, bool isAffecting);
+static List * GetReferencedRelationIdHelper(Oid relationId, bool isAffecting);
 
 /* this function is only exported in the regression tests */
 PG_FUNCTION_INFO_V1(get_referencing_relation_id_list);
@@ -183,7 +183,7 @@ ConnectedComponentOfRelationId(Oid relationId)
 	List *referencedRelationIdList = ReferencedRelationIdList(relationId);
 	List *referencingRelationIdList = ReferencingRelationIdList(relationId);
 	List *connectedComponentOidList = list_concat_unique_oid(referencedRelationIdList,
-													 	  referencingRelationIdList);
+															 referencingRelationIdList);
 
 	return connectedComponentOidList;
 }
@@ -309,8 +309,7 @@ CreateForeignKeyRelationGraph()
 	{
 		return;
 	}
-
-	else if(frelGraph == NULL)
+	else if (frelGraph == NULL)
 	{
 		frelGraph = (FRelGraph *) palloc(sizeof(FRelGraph));
 		frelGraph->validGraph = false;
@@ -573,7 +572,7 @@ ClearForeignKeyRelationGraph()
 	 */
 	if (frelGraph->nodeCount > 0)
 	{
-		for(indexCounter = 0 ; indexCounter < frelGraph->nodeCount ; indexCounter++)
+		for (indexCounter = 0; indexCounter < frelGraph->nodeCount; indexCounter++)
 		{
 			pfree(frelGraph->transitivityMatrix[indexCounter]);
 		}

@@ -964,8 +964,10 @@ BuildDistTableCacheEntry(DistTableCacheEntry *cacheEntry)
 		cacheEntry->hashFunction = NULL;
 	}
 
-	cacheEntry->referencedRelationsViaForeignKey = ReferencedRelationIdList(cacheEntry->relationId);
-	cacheEntry->referencingRelationsViaForeignKey = ReferencingRelationIdList(cacheEntry->relationId);
+	cacheEntry->referencedRelationsViaForeignKey = ReferencedRelationIdList(
+		cacheEntry->relationId);
+	cacheEntry->referencingRelationsViaForeignKey = ReferencingRelationIdList(
+		cacheEntry->relationId);
 
 	heap_close(pgDistPartition, NoLock);
 }
@@ -2924,13 +2926,15 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 			 */
 			if (IsForeignKeyGraphValid())
 			{
-				connectedComponentListOfRelation = ConnectedComponentOfRelationId(relationId);
+				connectedComponentListOfRelation = ConnectedComponentOfRelationId(
+					relationId);
 
 				foreach(nodeCell, connectedComponentListOfRelation)
 				{
 					Oid neighbourRelationId = lfirst_oid(nodeCell);
 					void *neighbourHashKey = (void *) &neighbourRelationId;
-					DistTableCacheEntry *neighbourCacheEntry = hash_search(DistTableCacheHash, neighbourHashKey, HASH_FIND, &foundInCache);
+					DistTableCacheEntry *neighbourCacheEntry = hash_search(
+						DistTableCacheHash, neighbourHashKey, HASH_FIND, &foundInCache);
 
 					if (foundInCache)
 					{
