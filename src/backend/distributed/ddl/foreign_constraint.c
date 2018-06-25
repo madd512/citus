@@ -174,6 +174,19 @@ IsForeignKeyGraphValid()
 
 
 /*
+ * SetForeignKeyGraphInvalid sets the validity of the graph to false.
+ */
+void
+SetForeignKeyGraphInvalid()
+{
+	if (frelGraph != NULL)
+	{
+		frelGraph->validGraph = false;
+	}
+}
+
+
+/*
  * ConnectedComponentOfRelationId returns the list of Oids which are in the
  * same connected component with given relation id.
  */
@@ -309,8 +322,9 @@ CreateForeignKeyRelationGraph()
 	{
 		return;
 	}
-	else if (frelGraph == NULL)
+	else
 	{
+		ClearForeignKeyRelationGraph();
 		frelGraph = (FRelGraph *) palloc(sizeof(FRelGraph));
 		frelGraph->validGraph = false;
 

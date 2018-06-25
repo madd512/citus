@@ -205,6 +205,7 @@ static ShardPlacement * ResolveGroupShardPlacement(
 	GroupShardPlacement *groupShardPlacement, ShardCacheEntry *shardEntry);
 static WorkerNode * LookupNodeForGroup(uint32 groupid);
 static Oid LookupEnumValueId(Oid typeId, char *valueName);
+static void SetRelatedOidsInvalid(Oid relationId);
 
 
 /* exports for SQL callable functions */
@@ -829,9 +830,6 @@ LookupDistTableCacheEntry(Oid relationId)
 	/* zero out entry, but not the key part */
 	memset(((char *) cacheEntry) + sizeof(Oid), 0,
 		   sizeof(DistTableCacheEntry) - sizeof(Oid));
-
-	/* We need to re-create foreign key relation graph */
-	ClearForeignKeyRelationGraph();
 
 	/* actually fill out entry */
 	BuildDistTableCacheEntry(cacheEntry);
@@ -2905,13 +2903,14 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 		{
 			cacheEntry->isValid = false;
 		}
+
+		SetForeignKeyGraphInvalid();
 	}
 	else
 	{
 		void *hashKey = (void *) &relationId;
 		bool foundInCache = false;
-		List *connectedComponentListOfRelation = NIL;
-		ListCell *nodeCell = NULL;
+
 
 		DistTableCacheEntry *cacheEntry = hash_search(DistTableCacheHash, hashKey,
 													  HASH_FIND, &foundInCache);
@@ -2919,29 +2918,7 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 		{
 			cacheEntry->isValid = false;
 
-			/*
-			 * We need to invalidate cache entry of each relation which are in the
-			 * same connected component with the given relation. If we do not have
-			 * foreign key relation graph, we don't need to do anything.
-			 */
-			if (IsForeignKeyGraphValid())
-			{
-				connectedComponentListOfRelation = ConnectedComponentOfRelationId(
-					relationId);
-
-				foreach(nodeCell, connectedComponentListOfRelation)
-				{
-					Oid neighbourRelationId = lfirst_oid(nodeCell);
-					void *neighbourHashKey = (void *) &neighbourRelationId;
-					DistTableCacheEntry *neighbourCacheEntry = hash_search(
-						DistTableCacheHash, neighbourHashKey, HASH_FIND, &foundInCache);
-
-					if (foundInCache)
-					{
-						neighbourCacheEntry->isValid = false;
-					}
-				}
-			}
+			SetRelatedOidsInvalid(relationId);
 		}
 	}
 
@@ -2953,6 +2930,51 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 	if (relationId != InvalidOid && relationId == MetadataCache.distPartitionRelationId)
 	{
 		InvalidateMetadataSystemCache();
+	}
+}
+
+
+/*
+ * SetRelatedOidsInvalid sets the affected relation's cache entry to invalid.
+ * It also invalidates foreign key relation graph if any relation
+ */
+static void
+SetRelatedOidsInvalid(Oid relationId)
+{
+	List *connectedComponentListOfRelation = NIL;
+	ListCell *nodeCell = NULL;
+	bool foundInCache = false;
+
+	/*
+	 * We need to invalidate cache entry of each relation which are in the
+	 * same connected component with the given relation. If we do not have
+	 * foreign key relation graph, we don't need to do anything.
+	 *
+	 * We also need to invalidate foreign key relation graph if any of the
+	 * node in it is affected by invalidating given relation ID.
+	 */
+	if (IsForeignKeyGraphValid())
+	{
+		connectedComponentListOfRelation = ConnectedComponentOfRelationId(
+			relationId);
+
+		foreach(nodeCell, connectedComponentListOfRelation)
+		{
+			Oid neighbourRelationId = lfirst_oid(nodeCell);
+			void *neighbourHashKey = (void *) &neighbourRelationId;
+			DistTableCacheEntry *neighbourCacheEntry = hash_search(
+				DistTableCacheHash, neighbourHashKey, HASH_FIND, &foundInCache);
+
+			if (foundInCache)
+			{
+				neighbourCacheEntry->isValid = false;
+			}
+		}
+
+		/*if (list_length(connectedComponentListOfRelation) > 0) */
+		/*{ */
+		SetForeignKeyGraphInvalid();
+		/*} */
 	}
 }
 
