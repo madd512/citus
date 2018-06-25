@@ -60,3 +60,24 @@ SELECT get_referenced_relation_id_list::regclass FROM get_referenced_relation_id
 SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('dtt1'::regclass) ORDER BY 1;
 SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('dtt2'::regclass) ORDER BY 1;
 SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('dtt3'::regclass) ORDER BY 1;
+
+/* Check to see whether cache invalidation works with create table */
+CREATE TABLE tt9(id int PRIMARY KEY, value_1 int REFERENCES tt8(id));
+
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('tt6'::regclass) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('tt7'::regclass) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('tt8'::regclass) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('tt9'::regclass) ORDER BY 1;
+
+CREATE TABLE dtt4(id int PRIMARY KEY);
+SELECT create_distributed_table('dtt4', 'id');
+
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('dtt4'::regclass) ORDER BY 1;
+
+ALTER TABLE dtt4 ADD CONSTRAINT dtt4_fkey FOREIGN KEY (id) REFERENCES dtt3(id);
+
+SELECT get_referenced_relation_id_list::regclass FROM get_referenced_relation_id_list('dtt4'::regclass) ORDER BY 1;
+SELECT get_referencing_relation_id_list::regclass FROM get_referencing_relation_id_list('dtt4'::regclass) ORDER BY 1;
+
+
+

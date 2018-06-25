@@ -29,6 +29,7 @@
 #include "distributed/colocation_utils.h"
 #include "distributed/connection_management.h"
 #include "distributed/citus_ruleutils.h"
+#include "distributed/foreign_constraint.h"
 #include "distributed/master_metadata_utility.h"
 #include "distributed/metadata_cache.h"
 #include "distributed/multi_logical_optimizer.h"
@@ -829,6 +830,9 @@ LookupDistTableCacheEntry(Oid relationId)
 	memset(((char *) cacheEntry) + sizeof(Oid), 0,
 		   sizeof(DistTableCacheEntry) - sizeof(Oid));
 
+	/* We need to re-create foreign key relation graph */
+	ClearForeignKeyRelationGraph();
+
 	/* actually fill out entry */
 	BuildDistTableCacheEntry(cacheEntry);
 
@@ -959,6 +963,9 @@ BuildDistTableCacheEntry(DistTableCacheEntry *cacheEntry)
 	{
 		cacheEntry->hashFunction = NULL;
 	}
+
+	cacheEntry->referencedRelationsViaForeignKey = ReferencedRelationIdList(cacheEntry->relationId);
+	cacheEntry->referencingRelationsViaForeignKey = ReferencingRelationIdList(cacheEntry->relationId);
 
 	heap_close(pgDistPartition, NoLock);
 }
@@ -2859,6 +2866,16 @@ ResetDistTableCacheEntry(DistTableCacheEntry *cacheEntry)
 		pfree(cacheEntry->arrayOfPlacementArrays);
 		cacheEntry->arrayOfPlacementArrays = NULL;
 	}
+	if (cacheEntry->referencedRelationsViaForeignKey)
+	{
+		pfree(cacheEntry->referencedRelationsViaForeignKey);
+		cacheEntry->referencedRelationsViaForeignKey = NIL;
+	}
+	if (cacheEntry->referencingRelationsViaForeignKey)
+	{
+		pfree(cacheEntry->referencingRelationsViaForeignKey);
+		cacheEntry->referencingRelationsViaForeignKey = NIL;
+	}
 
 	cacheEntry->shardIntervalArrayLength = 0;
 	cacheEntry->hasUninitializedShardInterval = false;
@@ -2891,12 +2908,36 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 	{
 		void *hashKey = (void *) &relationId;
 		bool foundInCache = false;
+		List *connectedComponentListOfRelation = NIL;
+		ListCell *nodeCell = NULL;
 
 		DistTableCacheEntry *cacheEntry = hash_search(DistTableCacheHash, hashKey,
 													  HASH_FIND, &foundInCache);
 		if (foundInCache)
 		{
 			cacheEntry->isValid = false;
+
+			/*
+			 * We need to invalidate cache entry of each relation which are in the
+			 * same connected component with the given relation. If we do not have
+			 * foreign key relation graph, we don't need to do anything.
+			 */
+			if (IsForeignKeyGraphValid())
+			{
+				connectedComponentListOfRelation = ConnectedComponentOfRelationId(relationId);
+
+				foreach(nodeCell, connectedComponentListOfRelation)
+				{
+					Oid neighbourRelationId = lfirst_oid(nodeCell);
+					void *neighbourHashKey = (void *) &neighbourRelationId;
+					DistTableCacheEntry *neighbourCacheEntry = hash_search(DistTableCacheHash, neighbourHashKey, HASH_FIND, &foundInCache);
+
+					if (foundInCache)
+					{
+						neighbourCacheEntry->isValid = false;
+					}
+				}
+			}
 		}
 	}
 
