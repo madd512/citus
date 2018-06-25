@@ -478,6 +478,9 @@ FindPlacementListConnection(int flags, List *placementAccessList, const char *us
 		ColocatedPlacementsHashEntry *colocatedEntry = NULL;
 		ConnectionReference *placementConnection = NULL;
 
+		/* record the relation access mapping */
+		AssociatePlacementAccessWithRelation(placement, accessType);
+
 		if (placement->shardId == INVALID_SHARD_ID)
 		{
 			/*
@@ -647,9 +650,6 @@ FindPlacementListConnection(int flags, List *placementAccessList, const char *us
 		}
 
 		*placementEntryList = lappend(*placementEntryList, placementEntry);
-
-		/* record the relation access mapping */
-		AssociatePlacementAccessWithRelation(placement, accessType);
 	}
 
 	return chosenConnection;

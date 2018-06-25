@@ -38,5 +38,8 @@ extern RelationAccessMode GetRelationDMLAccessMode(Oid relationId);
 extern RelationAccessMode GetRelationSelectAccessMode(Oid relationId);
 extern bool ShouldRecordRelationAccess(void);
 
+extern bool HoldsConflictingLockWithReferencedRelations(Oid relationId,
+														ShardPlacementAccessType
+														placementAccess);
 
 #endif /* RELATION_ACCESS_TRACKING_H_ */

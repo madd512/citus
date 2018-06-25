@@ -26,6 +26,11 @@
 #include "distributed/relation_access_tracking.h"
 #include "utils/hsearch.h"
 
+#include "distributed/multi_executor.h"
+
+static bool
+HoldsConflictingLockWithReferencingRelations(Oid relationId, ShardPlacementAccessType
+											 placementAccess);
 
 #define PARALLEL_MODE_FLAG_OFFSET 3
 
@@ -125,6 +130,16 @@ AssociatePlacementAccessWithRelation(ShardPlacement *placement,
 	}
 
 	shardId = placement->shardId;
+	DistTableCacheEntry *cacheEntry = DistributedTableCacheEntry(RelationIdForShard(shardId));
+	if (HoldsConflictingLockWithReferencingRelations(RelationIdForShard(shardId), accessType))
+	{
+		ereport(ERROR, (errmsg("cannot execute command since it holds conflicting locks")));
+	}
+	else if (cacheEntry->referencingRelationsViaForeignKey)
+	{
+		/* TODO: do we really need this? */
+		SetLocalMultiShardModifyModeToSequential();
+	}
 
 	AssociateShardAccessWithRelation(shardId, accessType);
 }
@@ -366,6 +381,7 @@ RecordParallelDDLAccess(Oid relationId)
 }
 
 
+
 /*
  * RecordParallelRelationAccess records the relation access mode as parallel
  * for the given access type (e.g., select, dml or ddl) in the RelationAccessHash.
@@ -378,6 +394,11 @@ RecordParallelRelationAccess(Oid relationId, ShardPlacementAccessType placementA
 	if (!ShouldRecordRelationAccess())
 	{
 		return;
+	}
+
+	if (HoldsConflictingLockWithReferencedRelations(relationId, placementAccess))
+	{
+		SetLocalMultiShardModifyModeToSequential();
 	}
 
 	/*
@@ -407,6 +428,133 @@ RecordParallelRelationAccess(Oid relationId, ShardPlacementAccessType placementA
 	}
 
 	RecordParallelRelationAccessToCache(relationId, placementAccess);
+}
+
+
+bool
+HoldsConflictingLockWithReferencedRelations(Oid relationId, ShardPlacementAccessType
+											placementAccess)
+{
+	DistTableCacheEntry *cacheEntry = DistributedTableCacheEntry(relationId);
+	ListCell *referencedRelationCell = NULL;
+
+	if (cacheEntry->partitionMethod != DISTRIBUTE_BY_HASH)
+	{
+		return false;
+	}
+
+	foreach(referencedRelationCell, cacheEntry->referencedRelationsViaForeignKey)
+	{
+		Oid referencedRelation = lfirst_oid(referencedRelationCell);
+		RelationAccessMode dmlMode = RELATION_NOT_ACCESSED;
+		RelationAccessMode ddlMode = RELATION_NOT_ACCESSED;
+
+		if (PartitionMethod(referencedRelation) != DISTRIBUTE_BY_NONE)
+		{
+			continue;
+		}
+
+		/*
+		 * Both DML and DDL operations on a reference table conflicts with
+		 * and parallel operation on distributed tables.
+		 */
+		dmlMode = GetRelationDMLAccessMode(referencedRelation);
+		if (dmlMode != RELATION_NOT_ACCESSED)
+		{
+			return true;
+		}
+
+		ddlMode = GetRelationDDLAccessMode(referencedRelation);
+		if (ddlMode != RELATION_NOT_ACCESSED)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+
+static bool
+HoldsConflictingLockWithReferencingRelations(Oid relationId, ShardPlacementAccessType
+											 placementAccess)
+{
+	DistTableCacheEntry *cacheEntry = DistributedTableCacheEntry(relationId);
+	ListCell *referencingRelationCell = NULL;
+
+	if (cacheEntry->partitionMethod != DISTRIBUTE_BY_NONE)
+	{
+		return false;
+	}
+
+	foreach(referencingRelationCell, cacheEntry->referencingRelationsViaForeignKey)
+	{
+		Oid referencingRelation = lfirst_oid(referencingRelationCell);
+
+		if (PartitionMethod(referencingRelation) != DISTRIBUTE_BY_HASH)
+		{
+			continue;
+		}
+
+		/*
+		 * Rules that we apply:
+		 * 		- SELECT on a reference might table conflict with
+		 * 		  a previous DDL on a distributed table
+		 */
+		if (placementAccess == PLACEMENT_ACCESS_SELECT)
+		{
+			RelationAccessMode ddlMode = GetRelationDDLAccessMode(referencingRelation);
+
+			if (ddlMode == RELATION_PARALLEL_ACCESSED)
+			{
+				/* SELECT on a distributed table conflicts with DDL / TRUNCATE */
+				return true;
+			}
+		}
+		else if (placementAccess == PLACEMENT_ACCESS_DML)
+		{
+			RelationAccessMode ddlMode = RELATION_NOT_ACCESSED;
+			RelationAccessMode dmlMode = GetRelationDMLAccessMode(referencingRelation);
+
+			if (dmlMode == RELATION_PARALLEL_ACCESSED)
+			{
+				return true;
+			}
+
+			ddlMode = GetRelationDDLAccessMode(referencingRelation);
+			if (ddlMode == RELATION_PARALLEL_ACCESSED)
+			{
+				/* SELECT on a distributed table conflicts with DDL / TRUNCATE */
+				return true;
+			}
+		}
+		else if (placementAccess == PLACEMENT_ACCESS_DDL)
+		{
+			RelationAccessMode selectMode = RELATION_NOT_ACCESSED;
+			RelationAccessMode ddlMode = RELATION_NOT_ACCESSED;
+			RelationAccessMode dmlMode = RELATION_NOT_ACCESSED;
+
+			selectMode = GetRelationSelectAccessMode(referencingRelation);
+			if (selectMode == RELATION_PARALLEL_ACCESSED)
+			{
+				return true;
+			}
+
+			dmlMode = GetRelationDMLAccessMode(referencingRelation);
+			if (dmlMode == RELATION_PARALLEL_ACCESSED)
+			{
+				return true;
+			}
+
+			ddlMode = GetRelationDDLAccessMode(referencingRelation);
+			if (ddlMode == RELATION_PARALLEL_ACCESSED)
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
 }
 
 

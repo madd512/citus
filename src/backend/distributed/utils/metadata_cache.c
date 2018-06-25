@@ -985,7 +985,7 @@ BuildDistTableCacheEntry(DistTableCacheEntry *cacheEntry)
 	cacheEntry->referencedRelationsViaForeignKey =
 		GetForeignKeyRelation(cacheEntry->relationId, true);
 	cacheEntry->referencingRelationsViaForeignKey =
-			GetForeignKeyRelation(cacheEntry->relationId, false);
+		GetForeignKeyRelation(cacheEntry->relationId, false);
 
 	heap_close(pgDistPartition, NoLock);
 }
@@ -2954,7 +2954,9 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 		}
 
 		if (RelationIsPartOfForeignKey(relationId))
+		{
 			DestroyForeignKeyRelationGraph();
+		}
 	}
 
 	/*

@@ -2325,7 +2325,14 @@ CitusCopyDestReceiverReceive(TupleTableSlot *slot, DestReceiver *dest)
 			copyDest->multiShardCopy = true;
 
 			/* when we see multiple shard connections, we mark COPY as parallel modify */
-			RecordParallelModifyAccess(relationId);
+			if (HoldsConflictingLockWithReferencedRelations(relationId, PLACEMENT_ACCESS_DML))
+			{
+				ereport(ERROR, (errmsg("cannot execute COPY since it holds conflicting locks")));
+			}
+			else
+			{
+				RecordParallelModifyAccess(relationId);
+			}
 		}
 
 		/* open connections and initiate COPY on shard placements */

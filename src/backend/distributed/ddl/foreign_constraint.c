@@ -113,18 +113,19 @@ get_foreign_key_relation(PG_FUNCTION_ARGS)
 void
 DestroyForeignKeyRelationGraph(void)
 {
-
 	if (frelGraph == NULL)
 	{
 		return;
 	}
 
-	hash_destroy(frelGraph);
+	// hash_destroy(frelGraph);
 
 	frelGraph = NULL;
 }
 
-bool RelationIsPartOfForeignKey(Oid relationId)
+
+bool
+RelationIsPartOfForeignKey(Oid relationId)
 {
 	bool isFound = false;
 
@@ -133,11 +134,12 @@ bool RelationIsPartOfForeignKey(Oid relationId)
 		return false;
 	}
 
-	 hash_search(frelGraph->nodeMap, &relationId,
-												HASH_FIND, &isFound);
+	hash_search(frelGraph->nodeMap, &relationId,
+				HASH_FIND, &isFound);
 
-	 return isFound;
+	return isFound;
 }
+
 
 /*
  * CreateForeignKeyRelationGraph creates the foreign key relation graph using
