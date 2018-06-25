@@ -66,6 +66,8 @@ typedef struct RelationAccessHashEntry
 static HTAB *RelationAccessHash;
 
 
+static void AssociateShardAccessWithRelation(uint64 shardId,
+											 ShardPlacementAccessType accessType);
 static void RecordPlacementAccessToCache(Oid relationId,
 										 ShardPlacementAccessType accessType);
 static RelationAccessMode GetRelationAccessMode(Oid relationId,
@@ -116,7 +118,6 @@ AssociatePlacementAccessWithRelation(ShardPlacement *placement,
 									 ShardPlacementAccessType accessType)
 {
 	uint64 shardId = INVALID_SHARD_ID;
-	Oid relationId = InvalidOid;
 
 	if (!ShouldRecordRelationAccess())
 	{
@@ -124,7 +125,22 @@ AssociatePlacementAccessWithRelation(ShardPlacement *placement,
 	}
 
 	shardId = placement->shardId;
-	relationId = RelationIdForShard(shardId);
+
+	AssociateShardAccessWithRelation(shardId, accessType);
+}
+
+
+/*
+ * AssociateShardAccessWithRelation associates the shard access to the
+ * distributed relation that the shard belongs to.
+ *
+ * We implemented this function to prevent accessing placement metadata during
+ * recursive calls of the function itself.
+ */
+static void
+AssociateShardAccessWithRelation(uint64 shardId, ShardPlacementAccessType accessType)
+{
+	Oid relationId = RelationIdForShard(shardId);
 
 	/*
 	 * If a relation is partitioned, record accesses to all of its partitions as well.
@@ -142,8 +158,6 @@ AssociatePlacementAccessWithRelation(ShardPlacement *placement,
 		{
 			Oid partitionOid = lfirst_oid(partitionCell);
 			uint64 partitionShardId = INVALID_SHARD_ID;
-			List *partitionShardPlacementList = NIL;
-			ShardPlacement *partitionInitialShardPlacement = NULL;
 
 			/*
 			 * During create_distributed_table, the partitions may not
@@ -158,27 +172,20 @@ AssociatePlacementAccessWithRelation(ShardPlacement *placement,
 
 			partitionShardId =
 				ColocatedShardIdInRelation(partitionOid, shardIndex);
-			partitionShardPlacementList = ShardPlacementList(partitionShardId);
-			partitionInitialShardPlacement =
-				(ShardPlacement *) linitial(partitionShardPlacementList);
 
-			/*
-			 * Recursively record all relation accesses of its partitions. Note that
-			 * we prefer to recursively call AssociatePlacementAccessWithRelation()
-			 * to support multi-level partitioned tables.
-			 */
-			AssociatePlacementAccessWithRelation(partitionInitialShardPlacement,
-												 accessType);
+			/* recursively call the function to cover multi-level partitioned tables */
+			AssociateShardAccessWithRelation(partitionShardId, accessType);
 		}
 	}
 	else if (PartitionTableNoLock(relationId))
 	{
 		Oid parentOid = PartitionParentOid(relationId);
 
-		/* only record the parent */
+		/* record the parent */
 		RecordPlacementAccessToCache(parentOid, accessType);
 	}
 
+	/* always record the relation that is being considered */
 	RecordPlacementAccessToCache(relationId, accessType);
 }
 
