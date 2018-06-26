@@ -15,59 +15,6 @@ from mitmproxy.proxy.protocol import TlsLayer, RawTCPLayer
 
 import structs
 
-'''
-Use with a command line like this:
-
-> mitmdump --rawtcp -p 9702 --mode reverse:localhost:9700 -s fluent.py
-     --set fifo=/tmp/mitm.fifo
-
-Where `9702` is the port you want this proxy to listen for connections on, and `9700` is
-the port you want this proxy to forward connections to. Once started, this proxy will wait
-for commands sent over the fifo. Here are some commands which are supported:
-
-conn.allow() - the default, allows all connections
-conn.kill()  - kills all connections immediately after the first packet is sent
-
-conn.onQuery().kill() - kill a connection once a "Query" packet is seen (The list of
-                        supported packets can be found in ./structs.py)
-
-conn.matches(b"^Q").kill() - This looks at the raw bytes of the packet, any packet
-                             starting with "Q" kills the connection (this is identical to
-                             the above command)
-
-conn.onQuery(query="COMMIT").kill() - you can look into the actual query which is sent and
-                                      match on its contents (this is always a regex)
-conn.onQuery(query="^COMMIT").kill() - the query must start with COMMIT
-conn.onQuery(query="pg_table_size\(") - you must escape parens, since you're in a regex
-
-conn.after(2).kill() - Kills a connection after the third packet has been sent down it
-
-These filters can also be abrbitrarily chained:
-
-conn.matches(b"^Q").after(2).kill() - kill any connection when the third Query is sent
-
-N.B. These commands work on a per-connection basis. Meaning, each connection is tracked
-individually, and a command such as `conn.onQuery().kill()` will only kill the connection
-on which the Query packet was seen, and a command such as `conn.onQuery().after(2).kill()`
-will never trigger if each Query is sent on a different connection, even if you send
-dozens of Query packets.
-
-There's one exception:
-
-conn.onQuery(query="^COMMIT").killall() - the killall() command kills this and all
-                                          subsequent connections. Any packets sent once it
-                                          triggers will have their connections killed.
-
-There are also some special commands. This proxy also records every packet and lets you
-inspect them:
-
-recorder.dump() - emits a list of captured packets in COPY text format
-recorder.reset() - empties the data structure containing the captured packets
-
-Both of those calls empty the structure containing the packets, a call to dump() will only
-return the packets which were captured since the last call to .dump() or reset()
-'''
-
 # I. Command Strings
 
 class Stop(Exception):
