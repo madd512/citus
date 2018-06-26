@@ -64,32 +64,11 @@ SELECT citus.mitmproxy('conn.allow()');
 
 CREATE FUNCTION create_tables() RETURNS void
 AS $$
-  CREATE TABLE multi_outer_join_left
-  (
-  	l_custkey integer not null,
-  	l_name varchar(25) not null,
-  	l_address varchar(40) not null,
-  	l_nationkey integer not null,
-  	l_phone char(15) not null,
-  	l_acctbal decimal(15,2) not null,
-  	l_mktsegment char(10) not null,
-  	l_comment varchar(117) not null
-  );
+  CREATE TABLE multi_outer_join_left ( l_custkey, l_name)
+    AS SELECT s.a, to_char(s.a, '999') FROM generate_series(1, 20) AS s(a);
   
-  CREATE TABLE multi_outer_join_right
-  (
-  	r_custkey integer not null,
-  	r_name varchar(25) not null,
-  	r_address varchar(40) not null,
-  	r_nationkey integer not null,
-  	r_phone char(15) not null,
-  	r_acctbal decimal(15,2) not null,
-  	r_mktsegment char(10) not null,
-  	r_comment varchar(117) not null
-  );
-  COPY multi_outer_join_left FROM '@abs_srcdir@/data/customer-1-10.data' with delimiter '|';
-  COPY multi_outer_join_left FROM '@abs_srcdir@/data/customer-11-20.data' with delimiter '|';
-  COPY multi_outer_join_right FROM '@abs_srcdir@/data/customer-1-15.data' with delimiter '|';
+  CREATE TABLE multi_outer_join_right ( r_custkey, r_name)
+    AS SELECT s.a, to_char(s.a, '999') FROM generate_series(1, 15) AS s(a);
 $$ LANGUAGE SQL;
 
 SELECT create_tables();
