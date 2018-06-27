@@ -160,7 +160,11 @@ BuildAggregatePlan(Query *masterQuery, Plan *subPlan)
 			}
 
 			aggregateStrategy = AGG_SORTED;
+#if (PG_VERSION_NUM >= 90600)
 			subPlan = (Plan *) make_sort_from_sortclauses(groupColumnList, subPlan);
+#else
+			subPlan = (Plan *) make_sort_from_sortclauses(NULL, groupColumnList, subPlan);
+#endif
 		}
 		else
 		{
