@@ -100,9 +100,14 @@ BuildAggregatePlan(Query *masterQuery, Plan *subPlan)
 
 	/* estimate aggregate execution costs */
 	memset(&aggregateCosts, 0, sizeof(AggClauseCosts));
+#if (PG_VERSION_NUM >= 90600)
 	get_agg_clause_costs(NULL, (Node *) aggregateTargetList, AGGSPLIT_SIMPLE,
 						 &aggregateCosts);
 	get_agg_clause_costs(NULL, (Node *) havingQual, AGGSPLIT_SIMPLE, &aggregateCosts);
+#else
+	count_agg_clauses(NULL, (Node *) aggregateTargetList, &aggregateCosts);
+	count_agg_clauses(NULL, (Node *) havingQual, &aggregateCosts);
+#endif
 
 	/*
 	 * For upper level plans above the sequential scan, the planner expects the
