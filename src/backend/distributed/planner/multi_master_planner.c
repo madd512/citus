@@ -173,10 +173,17 @@ BuildAggregatePlan(Query *masterQuery, Plan *subPlan)
 	}
 
 	/* finally create the plan */
+#if (PG_VERSION_NUM >= 90600)
 	aggregatePlan = make_agg(aggregateTargetList, (List *) havingQual, aggregateStrategy,
 							 AGGSPLIT_SIMPLE, groupColumnCount, groupColumnIdArray,
 							 groupColumnOpArray, NIL, NIL,
 							 rowEstimate, subPlan);
+#else
+	aggregatePlan = make_agg(NULL, aggregateTargetList, (List *) havingQual,
+							 aggregateStrategy,
+							 &aggregateCosts, groupColumnCount, groupColumnIdArray,
+							 groupColumnOpArray, NIL, rowEstimate, subPlan);
+#endif
 
 	/* just for reproducible costs between different PostgreSQL versions */
 	aggregatePlan->plan.startup_cost = 0;
