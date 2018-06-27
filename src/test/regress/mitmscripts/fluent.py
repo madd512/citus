@@ -271,7 +271,8 @@ def listen_for_commands(fifoname):
     def emit_row(conn, from_client, message):
         # we're using the COPY text format. It requires us to escape backslashes
         cleaned = message.replace('\\', '\\\\')
-        return '{}\t{}\t{}'.format(conn, from_client, cleaned)
+        source = 'coordinator' if from_client else 'worker'
+        return '{}\t{}\t{}'.format(conn, source, cleaned)
 
     def emit_message(message):
         if message.is_initial:

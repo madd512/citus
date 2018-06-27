@@ -32,11 +32,11 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE FUNCTION citus.dump_network_traffic()
-RETURNS TABLE(conn int, from_client bool, message text) AS $$
+RETURNS TABLE(conn int, source text, message text) AS $$
 BEGIN
   CREATE TEMPORARY TABLE mitmproxy_command (command text) ON COMMIT DROP;
   CREATE TEMPORARY TABLE mitmproxy_result (
-    conn int, from_client bool, message text
+    conn int, source text, message text
   ) ON COMMIT DROP;
 
   INSERT INTO mitmproxy_command VALUES ('recorder.dump()');
