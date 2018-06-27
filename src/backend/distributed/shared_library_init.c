@@ -38,6 +38,7 @@
 #include "distributed/multi_utility.h"
 #include "distributed/pg_dist_partition.h"
 #include "distributed/placement_connection.h"
+#include "distributed/relation_access_tracking.h"
 #include "distributed/query_pushdown_planning.h"
 #include "distributed/remote_commands.h"
 #include "distributed/shared_library_init.h"
@@ -398,6 +399,20 @@ RegisterCitusConfigVariables(void)
 		PGC_USERSET,
 		GUC_NO_SHOW_ALL,
 		NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		"citus.enforce_foreign_key_restrictions",
+		gettext_noop("Enforce restrictions while querying distributed/reference "
+					 "tables with foreign keys"),
+		gettext_noop("When enabled, cascading modifications from reference tables "
+					 "to distributed tables are prevented to avoid creating "
+					 "distributed deadlocks and ensure corretness."),
+		&EnforceForeignKeyRestrictions,
+		true,
+		PGC_USERSET,
+		0,
+		NULL, NULL, NULL);
+
 
 	DefineCustomBoolVariable(
 		"citus.subquery_pushdown",
