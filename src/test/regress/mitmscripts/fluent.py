@@ -238,11 +238,9 @@ class RecorderCommand:
         self.root = self
         self.command = None
 
-    def dump(self, normalize_shards=True, dump_unknown_messages=False):
+    def dump(self):
         # When the user calls dump() we return everything we've captured
         self.command = 'dump'
-        self.normalize_shards = normalize_shards
-        self.dump_unknown_messages = dump_unknown_messages
         return self
 
     def reset(self):
