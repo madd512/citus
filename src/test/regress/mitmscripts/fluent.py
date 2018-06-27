@@ -331,7 +331,7 @@ def listen_for_commands(fifoname):
         with open(fifoname, mode='w') as fifo:
             fifo.write('{}\n'.format(result))
 
-def replace_thread(fifoname):
+def create_thread(fifoname):
     global command_thread
 
     if not fifoname:
@@ -378,7 +378,7 @@ def configure(updated):
 
     if 'fifo' in updated:
         fifoname = ctx.options.fifo
-        replace_thread(fifoname)
+        create_thread(fifoname)
 
 
 def next_layer(layer):
